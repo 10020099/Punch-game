@@ -8,6 +8,19 @@ const upgradePanelCurrencyDisplay = document.getElementById('upgrade-panel-curre
 const powerUpUpgradesContainer = document.getElementById('power-up-upgrades-container');
 const playerStatUpgradesContainer = document.getElementById('player-stat-upgrades-container');
 
+// 调试开关
+const DEBUG = false;
+const debugLog = (...args) => { if (DEBUG) console.log(...args); };
+
+// 简单的子弹对象池减少内存分配
+const bulletPool = [];
+function getBullet() {
+    return bulletPool.pop() || {};
+}
+function releaseBullet(bullet) {
+    bulletPool.push(bullet);
+}
+
 
 // --- 游戏全局状态 ---
 let score = 0;
@@ -148,7 +161,7 @@ function initializeGame() {
     } else {
         totalCurrency = 0;
     }
-    console.log(`游戏初始化，当前总积分: ${totalCurrency}`);
+    debugLog(`游戏初始化，当前总积分: ${totalCurrency}`);
 
     // 尝试从localStorage加载强化等级
     const savedUpgradeLevels = localStorage.getItem('gameUpgradeLevels');
@@ -166,13 +179,13 @@ function initializeGame() {
         // 如果没有存储的等级，保存当前默认等级
         localStorage.setItem('gameUpgradeLevels', JSON.stringify(upgradeLevels));
     }
-    console.log("加载的强化等级:", upgradeLevels);
+    debugLog("加载的强化等级:", upgradeLevels);
 
     // 加载黄金飞机拥有状态
     const savedHasGoldenFighter = localStorage.getItem('hasGoldenFighter');
     hasGoldenFighter = savedHasGoldenFighter === 'true';
     isUsingGoldenFighter = false; // 每次开始游戏默认使用普通飞机
-    console.log(`黄金飞机状态 - 拥有: ${hasGoldenFighter}, 使用中: ${isUsingGoldenFighter}`);
+    debugLog(`黄金飞机状态 - 拥有: ${hasGoldenFighter}, 使用中: ${isUsingGoldenFighter}`);
 
     // 根据强化等级应用属性，这也会检查特殊奖励条件
     applyUpgrades();
@@ -230,7 +243,7 @@ function applyUpgrades() {
         checkForSpecialRewards();
     }
 
-    console.log("应用强化后玩家属性:", {
+    debugLog("应用强化后玩家属性:", {
         baseAttackSpeed: player.baseAttackSpeed,
         maxShield: player.maxShield,
         bulletDamage: player.bulletDamage,
@@ -255,7 +268,7 @@ function checkForSpecialRewards() {
         // 激活特殊奖励
         shieldEfficiencyBoost = true;
         reducedSuperComboRequirement = true;
-        console.log("特殊奖励已激活! 护盾效率提升 & 超级组合道具需求降低");
+        debugLog("特殊奖励已激活! 护盾效率提升 & 超级组合道具需求降低");
     } else {
         shieldEfficiencyBoost = false;
         reducedSuperComboRequirement = false;
@@ -270,7 +283,7 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
         backgroundIndex = backgroundIndex === 1 ? 2 : 1;
         document.getElementById('canvas-background').style.backgroundImage = `url('assets/images/container background${backgroundIndex}.png')`;
-        console.log(`背景切换到: ${backgroundIndex}`);
+        debugLog(`背景切换到: ${backgroundIndex}`);
         // 当切换到背景2时，重置护盾回复计时器，以便立即开始计算回复
         if (backgroundIndex === 2) {
             player.lastShieldRegenTime = Date.now();
@@ -288,7 +301,7 @@ document.addEventListener('keydown', (e) => {
     // 作弊码逻辑
     if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) { // 只接受字母和数字
         cheatCodeBuffer += e.key.toLowerCase();
-        // console.log("Cheat buffer: ", cheatCodeBuffer);
+        // debugLog("Cheat buffer: ", cheatCodeBuffer);
         // 可选：限制缓冲长度，例如 cheatCodeBuffer = cheatCodeBuffer.slice(-10);
     } else if (e.code === 'Enter') {
         if (cheatCodeBuffer === 'tq123') {
@@ -298,7 +311,7 @@ document.addEventListener('keydown', (e) => {
             if (upgradePanel.style.display === 'block') { // 如果强化面板开着，也更新它
                 renderUpgradePanel();
             }
-            console.log("作弊码激活: tq123 - 增加10000积分");
+            debugLog("作弊码激活: tq123 - 增加10000积分");
             alert("作弊码激活: 增加10000积分");
         } else if (cheatCodeBuffer === 'tq456') {
             // 激活类超级组合效果，但不计入永久激活
@@ -307,7 +320,7 @@ document.addEventListener('keydown', (e) => {
             player.isScoreMultiplierActive = true;
             // 设置一个计时器来取消这些效果
             player.activePowerUps['CHEAT_SUPER_EFFECT'] = Date.now() + CHEAT_EFFECT_DURATION;
-            console.log("作弊码激活: tq456 - 临时超级组合效果 (20秒)");
+            debugLog("作弊码激活: tq456 - 临时超级组合效果 (20秒)");
             alert("作弊码激活: 临时超级组合效果 (20秒)");
         }
         cheatCodeBuffer = ""; // 无论是否匹配都清空缓冲
@@ -335,7 +348,7 @@ function openUpgradePanel() {
 
     upgradePanel.style.display = 'block';
     renderUpgradePanel(); // 打开时渲染/更新内容
-    console.log("游戏已暂停，强化面板打开");
+    debugLog("游戏已暂停，强化面板打开");
 }
 
 function closeUpgradePanel() {
@@ -348,7 +361,7 @@ function closeUpgradePanel() {
     // 如果Boss有独立的计时器行为，也需要在这里恢复
     
     gameLoopRequestId = requestAnimationFrame(gameLoop); // 重新启动游戏循环
-    console.log("游戏已恢复，强化面板关闭");
+    debugLog("游戏已恢复，强化面板关闭");
 }
 
 // 事件监听：关闭强化面板按钮
@@ -493,7 +506,7 @@ function handleUpgradeClick(event) {
         renderUpgradePanel(); // 重新渲染面板以更新状态和按钮
         updateGameUIDisplays(); // 更新游戏内可能显示的积分等
 
-        console.log(`强化 ${levelKey} 到等级 ${upgradeLevels[levelKey]}/${MAX_UPGRADE_LEVEL}. 剩余积分: ${totalCurrency}`);
+        debugLog(`强化 ${levelKey} 到等级 ${upgradeLevels[levelKey]}/${MAX_UPGRADE_LEVEL}. 剩余积分: ${totalCurrency}`);
         
         // 检查是否所有强化都达到最大等级
         if (hasGoldenFighter) {
@@ -552,7 +565,7 @@ function createBoss() {
     bossActive = true;
     bossSpawnCount++; // Boss出现次数增加
     clearInterval(enemyInterval); // 停止生成普通敌人
-    console.log(`Boss出现了! 第 ${bossSpawnCount} 次. 护盾: ${boss.shield}, 血量: ${boss.health}`);
+    debugLog(`Boss出现了! 第 ${bossSpawnCount} 次. 护盾: ${boss.shield}, 血量: ${boss.health}`);
 }
 
 // 螺旋弹幕攻击
@@ -578,16 +591,16 @@ function spiralBulletAttack() {
             const vx = Math.cos(angle) * bulletSpeed;
             const vy = Math.sin(angle) * bulletSpeed;
             
-            boss.bullets.push({
-                x: boss.x,
-                y: boss.y + boss.height / 2,
-                width: 8,
-                height: 8,
-                dx: vx,
-                dy: vy,
-                damage: 10,
-                color: '#FF00FF'  // 粉紫色子弹
-            });
+            const bullet = getBullet();
+            bullet.x = boss.x;
+            bullet.y = boss.y + boss.height / 2;
+            bullet.width = 8;
+            bullet.height = 8;
+            bullet.dx = vx;
+            bullet.dy = vy;
+            bullet.damage = 10;
+            bullet.color = '#FF00FF';  // 粉紫色子弹
+            boss.bullets.push(bullet);
         }
         
         startAngle += Math.PI * 2 * rotationsPerSecond / (1000 / 200);  // 按rotationsPerSecond的速率旋转
@@ -614,20 +627,19 @@ function homingBulletAttack() {
         setTimeout(() => {
             if (!boss || isGamePaused) return;
             
-            const bullet = {
-                x: boss.x,
-                y: boss.y + boss.height / 2,
-                width: 12,
-                height: 12,
-                dx: 0,
-                dy: bulletSpeed,
-                damage: 15,
-                color: '#00FFFF',  // 青色子弹
-                isHoming: true,
-                creationTime: Date.now(),
-                trackingStrength: 0.03  // 追踪强度，值越大追踪越敏感
-            };
-            
+            const bullet = getBullet();
+            bullet.x = boss.x;
+            bullet.y = boss.y + boss.height / 2;
+            bullet.width = 12;
+            bullet.height = 12;
+            bullet.dx = 0;
+            bullet.dy = bulletSpeed;
+            bullet.damage = 15;
+            bullet.color = '#00FFFF';  // 青色子弹
+            bullet.isHoming = true;
+            bullet.creationTime = Date.now();
+            bullet.trackingStrength = 0.03;  // 追踪强度，值越大追踪越敏感
+
             boss.bullets.push(bullet);
         }, i * 500);  // 每0.5秒发射一颗
     }
@@ -657,16 +669,16 @@ function circularBulletAttack() {
                 const vx = Math.cos(angle) * bulletSpeed;
                 const vy = Math.sin(angle) * bulletSpeed;
                 
-                boss.bullets.push({
-                    x: boss.x,
-                    y: boss.y + boss.height / 2,
-                    width: 10,
-                    height: 10,
-                    dx: vx,
-                    dy: vy,
-                    damage: 12,
-                    color: '#FFFF00'  // 黄色子弹
-                });
+                const bullet = getBullet();
+                bullet.x = boss.x;
+                bullet.y = boss.y + boss.height / 2;
+                bullet.width = 10;
+                bullet.height = 10;
+                bullet.dx = vx;
+                bullet.dy = vy;
+                bullet.damage = 12;
+                bullet.color = '#FFFF00';  // 黄色子弹
+                boss.bullets.push(bullet);
             }
         }, wave * 800);  // 每波之间间隔0.8秒
     }
@@ -708,22 +720,29 @@ function update() {
     const currentTime = Date.now();
     if (currentTime - player.lastAttackTime > player.currentAttackSpeed) { // 使用 currentAttackSpeed
         if (player.isDoubleShotActive) {
-            player.bullets.push({ // 左侧子弹
-                x: player.x - player.width / 4,
-                y: player.y - player.height / 2,
-                width: 6, height: 14, speed: 10
-            });
-            player.bullets.push({ // 右侧子弹
-                x: player.x + player.width / 4,
-                y: player.y - player.height / 2,
-                width: 6, height: 14, speed: 10
-            });
+            let bullet = getBullet();
+            bullet.x = player.x - player.width / 4;
+            bullet.y = player.y - player.height / 2;
+            bullet.width = 6;
+            bullet.height = 14;
+            bullet.speed = 10;
+            player.bullets.push(bullet); // 左侧子弹
+
+            bullet = getBullet();
+            bullet.x = player.x + player.width / 4;
+            bullet.y = player.y - player.height / 2;
+            bullet.width = 6;
+            bullet.height = 14;
+            bullet.speed = 10;
+            player.bullets.push(bullet); // 右侧子弹
         } else {
-            player.bullets.push({
-                x: player.x,
-                y: player.y - player.height / 2,
-                width: 6, height: 14, speed: 10
-            });
+            const bullet = getBullet();
+            bullet.x = player.x;
+            bullet.y = player.y - player.height / 2;
+            bullet.width = 6;
+            bullet.height = 14;
+            bullet.speed = 10;
+            player.bullets.push(bullet);
         }
         player.lastAttackTime = currentTime;
     }
@@ -738,7 +757,7 @@ function update() {
                 player.shield = player.maxShield;
             }
             player.lastShieldRegenTime = currentTime;
-            console.log(`玩家护盾回复: ${regenAmount} (总: ${player.shield})`);
+            debugLog(`玩家护盾回复: ${regenAmount} (总: ${player.shield})`);
         }
     }
 
@@ -756,6 +775,7 @@ function update() {
         bullet.y -= bullet.speed;
         if (bullet.y < 0) {
             player.bullets.splice(i, 1);
+            releaseBullet(bullet);
         }
     }
 
@@ -785,8 +805,7 @@ function update() {
                 bullet.y < boss.y + boss.height / 2 &&
                 bullet.y + bullet.height > boss.y - boss.height / 2) {
                 player.bullets.splice(j, 1); // 子弹消失
-                
-                player.bullets.splice(j, 1); // 子弹消失
+                releaseBullet(bullet);
                 
                 let damageDealt = player.bulletDamage * 10; // 基础伤害，乘以玩家子弹伤害系数
 
@@ -809,7 +828,7 @@ function update() {
                         realDamageForBuff = 1 + normalFighterKillsForBuff;
                     }
                     boss.health -= realDamageForBuff; 
-                    console.log(`场地真实伤害 (基于击杀): 对Boss造成 ${realDamageForBuff} 点伤害`);
+                    debugLog(`场地真实伤害 (基于击杀): 对Boss造成 ${realDamageForBuff} 点伤害`);
                 }
 
                 if (boss.health < 0) boss.health = 0;
@@ -824,7 +843,7 @@ function update() {
                     boss = null;
                     
                     nextBossScore += scoreForBoss; 
-                    console.log(`Boss 被击败! 下一个Boss将在 ${nextBossScore} (触发分)时出现. 当前总分: ${score}, 当前触发分: ${scoreForBossTrigger}`);
+                    debugLog(`Boss 被击败! 下一个Boss将在 ${nextBossScore} (触发分)时出现. 当前总分: ${score}, 当前触发分: ${scoreForBossTrigger}`);
 
                     startEnemyCreation(); 
                     break;
@@ -871,6 +890,7 @@ function update() {
                     // 检查子弹是否超过生命周期
                     if (Date.now() - bBullet.creationTime > 8000) { // 8秒后消失
                         boss.bullets.splice(i, 1);
+                        releaseBullet(bBullet);
                         continue;
                     }
                     
@@ -902,13 +922,15 @@ function update() {
                     bBullet.y - bBullet.height / 2 < player.y + player.height / 2) {
                     handlePlayerHit(bBullet.damage);
                     boss.bullets.splice(i, 1); // 子弹消失
-                    continue; 
+                    releaseBullet(bBullet);
+                    continue;
                 }
 
                 // 移除飞出边界的Boss子弹 (也检查左右边界)
                 if (bBullet.y > canvas.height || bBullet.y < -bBullet.height || 
                     bBullet.x < -bBullet.width || bBullet.x > canvas.width + bBullet.width) {
                     boss.bullets.splice(i, 1);
+                    releaseBullet(bBullet);
                 }
             }
         }
@@ -926,7 +948,8 @@ function update() {
                     bullet.y < enemy.y + enemy.height &&
                     bullet.y + bullet.height > enemy.y) {
                     
-                    player.bullets.splice(j, 1); 
+                    player.bullets.splice(j, 1);
+                    releaseBullet(bullet);
                     enemies.splice(i, 1);      
                     let enemyKillScore = 10;
                     if (player.isScoreMultiplierActive) enemyKillScore *= 2;
@@ -941,15 +964,15 @@ function update() {
                         } else {
                             normalFighterKillsForBuff++;
                         }
-                        console.log(`场地Buff击杀计数 - 普通: ${normalFighterKillsForBuff}, 黄金: ${goldenFighterKillsForBuff}`);
+                        debugLog(`场地Buff击杀计数 - 普通: ${normalFighterKillsForBuff}, 黄金: ${goldenFighterKillsForBuff}`);
                     }
 
                     if (backgroundIndex === 1) {
                         // 普通敌人目前没有血量，真实伤害主要体现在对Boss效果上
                         // 如果未来普通敌人有血量，可以在此处理
-                        console.log("普通敌人在背景1下被击中并消灭");
+                        debugLog("普通敌人在背景1下被击中并消灭");
                     } else {
-                        console.log("普通敌人在背景2下被击中并消灭");
+                        debugLog("普通敌人在背景2下被击中并消灭");
                     }
                     break; 
                 }
@@ -980,14 +1003,14 @@ function handlePlayerHit(damage) {
             // 只扣除5点护盾或剩余护盾值（如果不足5点）
             const shieldCost = Math.min(5, player.shield);
             player.shield -= shieldCost;
-            console.log(`玩家护盾高效抵挡伤害! 扣除护盾: ${shieldCost} (剩余: ${player.shield})`);
+            debugLog(`玩家护盾高效抵挡伤害! 扣除护盾: ${shieldCost} (剩余: ${player.shield})`);
         } else {
             // 正常扣除护盾
             player.shield -= damage;
             if (player.shield < 0) {
                 player.shield = 0; // 护盾不会为负
             }
-            console.log(`玩家护盾受损: ${player.shield}`);
+            debugLog(`玩家护盾受损: ${player.shield}`);
         }
     } else {
         gameOver();
@@ -1011,11 +1034,15 @@ function gameOver() {
     enemies = []; 
     player.x = canvas.width / 2;
     player.y = canvas.height - 30;
+    player.bullets.forEach(releaseBullet);
     player.bullets = []; // 清除所有子弹
     player.shield = player.maxShield; 
     // 重置激活的道具效果
     Object.keys(player.activePowerUps).forEach(type => deactivatePowerUp(type, true)); // silent = true, 避免重复设置基础值
-    if (boss) boss.bullets = []; // 清空Boss子弹
+    if (boss) {
+        boss.bullets.forEach(releaseBullet);
+        boss.bullets = []; // 清空Boss子弹
+    }
     player.isDoubleShotActive = false;
     player.isScoreMultiplierActive = false;
     player.currentAttackSpeed = player.baseAttackSpeed;
@@ -1209,7 +1236,7 @@ function createPowerUp() {
         color: color,
         speed: POWER_UP_SPEED
     });
-    console.log(`生成道具: ${type}${type === POWER_UP_TYPES.SUPER_COMBO ? ' (黄金飞机专属)' : ''}`);
+    debugLog(`生成道具: ${type}${type === POWER_UP_TYPES.SUPER_COMBO ? ' (黄金飞机专属)' : ''}`);
 }
 
 function updatePowerUps(currentTime) {
@@ -1241,7 +1268,7 @@ function spawnPowerUps(currentTime) {
 }
 
 function activatePowerUp(type, currentTime) {
-    console.log(`激活道具: ${type}`);
+    debugLog(`激活道具: ${type}`);
     let duration = BASE_POWER_UP_DURATION;
     const durationLevelKey = type + 'DurationLevel';
     if (upgradeLevels[durationLevelKey] !== undefined) {
@@ -1254,7 +1281,7 @@ function activatePowerUp(type, currentTime) {
     }
     
     player.activePowerUps[type] = currentTime + duration;
-    console.log(`道具 ${type} 持续时间: ${duration / 1000}s${isUsingGoldenFighter ? ' (黄金飞机加成)' : ''}`);
+    debugLog(`道具 ${type} 持续时间: ${duration / 1000}s${isUsingGoldenFighter ? ' (黄金飞机加成)' : ''}`);
 
     switch (type) {
         case POWER_UP_TYPES.DOUBLE_SHOT:
@@ -1272,7 +1299,7 @@ function activatePowerUp(type, currentTime) {
             
             // 根据特殊奖励状态确定永久激活所需次数
             const requiredCount = reducedSuperComboRequirement ? REDUCED_SUPER_COMBO_REQUIREMENT : NORMAL_SUPER_COMBO_REQUIREMENT;
-            console.log(`超级组合道具计数: ${player.superComboCount}/${requiredCount}${reducedSuperComboRequirement ? ' (需求已降低!)' : ''}`);
+            debugLog(`超级组合道具计数: ${player.superComboCount}/${requiredCount}${reducedSuperComboRequirement ? ' (需求已降低!)' : ''}`);
             
             // 同时激活所有道具效果
             player.isDoubleShotActive = true;
@@ -1282,7 +1309,7 @@ function activatePowerUp(type, currentTime) {
             // 当拾取到足够次数后，永久激活组合效果
             if (player.superComboCount >= requiredCount && !player.isSuperComboActive) {
                 player.isSuperComboActive = true;
-                console.log(`超级组合道具效果已永久激活! (需求: ${requiredCount}次)`);
+                debugLog(`超级组合道具效果已永久激活! (需求: ${requiredCount}次)`);
                 
                 // 移除计时器，因为效果已永久激活
                 delete player.activePowerUps[type];
@@ -1292,7 +1319,7 @@ function activatePowerUp(type, currentTime) {
 }
 
 function deactivatePowerUp(type, silent = false) {
-    if (!silent) console.log(`道具结束: ${type}`);
+    if (!silent) debugLog(`道具结束: ${type}`);
     delete player.activePowerUps[type];
 
     switch (type) {
@@ -1328,10 +1355,10 @@ function deactivatePowerUp(type, silent = false) {
                 player.isDoubleShotActive = false;
                 player.currentAttackSpeed = player.baseAttackSpeed;
                 player.isScoreMultiplierActive = false;
-                console.log("作弊码超级效果结束");
+                debugLog("作弊码超级效果结束");
             } else {
                  // 如果永久超级组合已激活，作弊码效果结束时不需要改变状态，因为永久效果优先
-                console.log("作弊码超级效果计时结束，但永久超级组合已激活");
+                debugLog("作弊码超级效果计时结束，但永久超级组合已激活");
             }
             break;
     }
@@ -1461,7 +1488,7 @@ function toggleFighter() {
         updatePlayerImage();
         applyUpgrades(); // 重新应用所有属性
         updateGoldenFighterStatus();
-        console.log(`切换到${isUsingGoldenFighter ? '黄金飞机' : '普通飞机'}`);
+        debugLog(`切换到${isUsingGoldenFighter ? '黄金飞机' : '普通飞机'}`);
         
         // 更新游戏界面提示
         const goldenFighterIndicator = document.getElementById('golden-fighter-indicator');
@@ -1479,7 +1506,7 @@ function toggleFighter() {
             }
         }
     } else {
-        console.log('没有黄金飞机，无法切换');
+        debugLog('没有黄金飞机，无法切换');
     }
 }
 
@@ -1521,9 +1548,9 @@ function updateGoldenFighterStatus() {
                 localStorage.setItem('totalGameCurrency', totalCurrency);
                 upgradePanelCurrencyDisplay.textContent = totalCurrency;
                 updateGoldenFighterStatus();
-                console.log('黄金飞机购买成功!');
+                debugLog('黄金飞机购买成功!');
             } else {
-                console.log('积分不足，无法购买黄金飞机');
+                debugLog('积分不足，无法购买黄金飞机');
             }
         };
         statusContainer.appendChild(buyButton);
