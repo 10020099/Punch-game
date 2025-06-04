@@ -165,6 +165,10 @@ playerImage.onload = function() {
 const enemyImage = new Image();
 enemyImage.src = 'assets/images/enemy fighter.png';
 
+// 加载第二种敌方战机图片
+const enemyImage2 = new Image();
+enemyImage2.src = 'assets/images/enemy fighter 2.png';
+
 // 加载Boss图片
 const bossImage = new Image();
 bossImage.src = 'assets/images/boss.png'; // 确保boss图片路径正确
@@ -585,15 +589,28 @@ function updateGameUIDisplays() {
 }
 
 
+// 创建敌方战机
 function createEnemy() {
     if (!bossActive) { // 只有在没有Boss时才创建普通敌人
-        enemies.push({
+        const isStrongerEnemy = Math.random() < 0.5; // 50% chance for a stronger enemy
+        let newEnemy = {
             x: Math.random() * (canvas.width - 50), // 减去敌人宽度，防止出界
             y: -50, // 从画布外生成
             width: 50,
             height: 50,
             speed: 1.0
-        });
+        };
+
+        if (isStrongerEnemy) {
+            newEnemy.image = enemyImage2;
+            newEnemy.health = 2;
+            newEnemy.type = 'fighter2';
+        } else {
+            newEnemy.image = enemyImage;
+            newEnemy.health = 1; // Explicitly set health for normal enemy
+            newEnemy.type = 'fighter1';
+        }
+        enemies.push(newEnemy);
     }
 }
 
@@ -995,7 +1012,7 @@ function update() {
     }
 
 
-    // 检测普通敌人与子弹碰撞
+    // Detect collision between normal enemies and bullets
     if (!bossActive) {
         for (let i = enemies.length - 1; i >= 0; i--) {
             let enemy = enemies[i];
@@ -1008,29 +1025,34 @@ function update() {
                     
                     player.bullets.splice(j, 1);
                     releaseBullet(bullet);
-                    enemies.splice(i, 1);      
-                    let enemyKillScore = 10;
-                    if (player.isScoreMultiplierActive) enemyKillScore *= 2;
-                    score += enemyKillScore;  // 总分增加
-                    scoreForBossTrigger += enemyKillScore; // Boss触发分也增加             
-                    scoreElement.textContent = `分数: ${score}`;
 
-                    // 增加场地Buff击杀计数 (非Boss击杀)
-                    if (!bossActive) { // 确保不是在打boss时意外计数（虽然此循环已在!bossActive条件下）
+                    // Handle enemy health
+                    enemy.health -= 1; // Assuming player bullet does 1 damage
+
+                    if (enemy.health <= 0) {
+                        enemies.splice(i, 1);
+                        let enemyKillScore = (enemy.type === 'fighter2') ? 20 : 10; // More points for stronger enemy
+                        if (player.isScoreMultiplierActive) enemyKillScore *= 2;
+                        score += enemyKillScore;  // 总分增加
+                        scoreForBossTrigger += enemyKillScore; // Boss触发分也增加
+                        scoreElement.textContent = `分数: ${score}`;
+
+                        // Add to kill counts for buffs, ensuring enemy object still exists for type check
                         if (isUsingGoldenFighter) {
                             goldenFighterKillsForBuff++;
                         } else {
                             normalFighterKillsForBuff++;
                         }
                         debugLog(`场地Buff击杀计数 - 普通: ${normalFighterKillsForBuff}, 黄金: ${goldenFighterKillsForBuff}`);
-                    }
 
-                    if (backgroundIndex === 1) {
-                        // 普通敌人目前没有血量，真实伤害主要体现在对Boss效果上
-                        // 如果未来普通敌人有血量，可以在此处理
-                        debugLog("普通敌人在背景1下被击中并消灭");
+                        if (backgroundIndex === 1) {
+                            debugLog(`敌人 (${enemy.type}) 在背景1下被击中并消灭`);
+                        } else {
+                            debugLog(`敌人 (${enemy.type}) 在背景2下被击中并消灭`);
+                        }
                     } else {
-                        debugLog("普通敌人在背景2下被击中并消灭");
+                        // Enemy is damaged but not destroyed
+                        debugLog(`敌人 (${enemy.type}) 受伤, 剩余生命: ${enemy.health}`);
                     }
                     break; 
                 }
@@ -1175,11 +1197,14 @@ function draw() {
     // 绘制敌人 (普通敌人)
     if (!bossActive) {
         for (let enemy of enemies) {
-            if (enemyImage.complete) {
-                ctx.drawImage(enemyImage, enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
+            if (enemy.image && enemy.image.complete) { // Check if enemy.image exists and is loaded
+                ctx.drawImage(enemy.image, enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
             } else {
-                ctx.fillStyle = 'green';
+                // Fallback drawing if the specific enemy image isn't ready (e.g. new type image still loading)
+                // Or if enemy.image was somehow not set (shouldn't happen with current createEnemy)
+                ctx.fillStyle = 'grey'; // A neutral fallback color
                 ctx.fillRect(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
+                debugLog("Fallback drawing for an enemy, its image might not be loaded or set.", enemy);
             }
         }
     }
