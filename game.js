@@ -120,7 +120,7 @@ let lastPowerUpSpawnTime = 0;
 
 let boss = null;
 let bossActive = false;
-const scoreForBoss = 1200; // 修改Boss出现分数为1200
+const scoreForBoss = 800; // 修改Boss出现分数为800
 let nextBossScore = scoreForBoss;
 let enemyInterval; // 用于控制普通敌人的生成
 
@@ -1061,7 +1061,7 @@ function gameOver() {
 
     boss = null; 
     bossActive = false;
-    // 使用新的 scoreForBoss (1200) 来计算下一次Boss的分数线
+    // 使用新的 scoreForBoss (800) 来计算下一次Boss的分数线
     // 这个逻辑确保了如果在一局游戏中途结束，下一次开始时 boss score 是合理的
     // 应该基于 scoreForBossTrigger 来计算
     nextBossScore = scoreForBoss * (Math.floor(scoreForBossTrigger / scoreForBoss) + 1); 
