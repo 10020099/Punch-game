@@ -48,7 +48,7 @@ const POWER_UP_TYPES = {
     SUPER_COMBO: 'super_combo'
 };
 
-// 强化等级上限 - 改为根据是否拥有黄金飞机动态调整
+// 强化等级上限 - 根据当前使用的飞机动态调整
 const BASE_MAX_UPGRADE_LEVEL = 10;  // 基础上限
 const GOLDEN_MAX_UPGRADE_LEVEL = 20; // 黄金飞机拥有者上限
 // MAX_UPGRADE_LEVEL 将在applyUpgrades中动态设置
@@ -217,25 +217,34 @@ function initializeGame() {
 }
 
 function applyUpgrades() {
-    // 根据是否拥有黄金飞机动态设置最大强化等级
-    const MAX_UPGRADE_LEVEL = hasGoldenFighter ? GOLDEN_MAX_UPGRADE_LEVEL : BASE_MAX_UPGRADE_LEVEL;
-    
+    // 根据当前使用的飞机动态设置最大强化等级
+    const MAX_UPGRADE_LEVEL = isUsingGoldenFighter ? GOLDEN_MAX_UPGRADE_LEVEL : BASE_MAX_UPGRADE_LEVEL;
+
     // 应用战机属性强化，考虑黄金飞机的双倍效果
     const multiplier = isUsingGoldenFighter ? 2 : 1; // 黄金飞机时增益效果加倍
-    
+
     // 计算基础攻击速度 (数值越小攻击越快)
     // 攻击速度需要特殊处理，因为它是数值越小越好
-    let attackSpeedReduction = upgradeLevels.playerAttackSpeedLevel * ATTACK_SPEED_DECREMENT_PER_LEVEL;
+    const effectiveAttackSpeedLevel = isUsingGoldenFighter
+        ? upgradeLevels.playerAttackSpeedLevel
+        : Math.min(upgradeLevels.playerAttackSpeedLevel, BASE_MAX_UPGRADE_LEVEL);
+    let attackSpeedReduction = effectiveAttackSpeedLevel * ATTACK_SPEED_DECREMENT_PER_LEVEL;
     if (isUsingGoldenFighter) attackSpeedReduction *= 2; // 黄金飞机双倍效果
     player.baseAttackSpeed = PLAYER_BASE_ATTACK_SPEED_INTERVAL - attackSpeedReduction;
     if (player.baseAttackSpeed < 50) player.baseAttackSpeed = 50; // 设置一个攻速上限(最小间隔)
-    
+
     // 计算最大护盾 - 修正为对整个值应用倍率
-    const baseShieldWithUpgrades = PLAYER_BASE_MAX_SHIELD + (upgradeLevels.playerMaxShieldLevel * MAX_SHIELD_INCREMENT_PER_LEVEL);
+    const effectiveShieldLevel = isUsingGoldenFighter
+        ? upgradeLevels.playerMaxShieldLevel
+        : Math.min(upgradeLevels.playerMaxShieldLevel, BASE_MAX_UPGRADE_LEVEL);
+    const baseShieldWithUpgrades = PLAYER_BASE_MAX_SHIELD + (effectiveShieldLevel * MAX_SHIELD_INCREMENT_PER_LEVEL);
     player.maxShield = baseShieldWithUpgrades * multiplier;
-    
+
     // 计算子弹伤害 - 修正为对整个值应用倍率
-    const baseDamageWithUpgrades = PLAYER_BASE_BULLET_DAMAGE + (upgradeLevels.playerBulletDamageLevel * BULLET_DAMAGE_INCREMENT_PER_LEVEL);
+    const effectiveDamageLevel = isUsingGoldenFighter
+        ? upgradeLevels.playerBulletDamageLevel
+        : Math.min(upgradeLevels.playerBulletDamageLevel, BASE_MAX_UPGRADE_LEVEL);
+    const baseDamageWithUpgrades = PLAYER_BASE_BULLET_DAMAGE + (effectiveDamageLevel * BULLET_DAMAGE_INCREMENT_PER_LEVEL);
     player.bulletDamage = baseDamageWithUpgrades * multiplier;
 
     // 检查是否满足特殊奖励条件 - 所有强化项目达到20级
@@ -385,8 +394,8 @@ function renderUpgradePanel() {
         return;
     }
     
-    // 根据是否拥有黄金飞机动态设置最大强化等级
-    const MAX_UPGRADE_LEVEL = hasGoldenFighter ? GOLDEN_MAX_UPGRADE_LEVEL : BASE_MAX_UPGRADE_LEVEL;
+    // 根据当前使用的飞机动态设置最大强化等级
+    const MAX_UPGRADE_LEVEL = isUsingGoldenFighter ? GOLDEN_MAX_UPGRADE_LEVEL : BASE_MAX_UPGRADE_LEVEL;
     
     upgradePanelCurrencyDisplay.textContent = totalCurrency;
 
@@ -474,8 +483,8 @@ function calculateUpgradeCost(currentLevel) {
 }
 
 function handleUpgradeClick(event) {
-    // 根据是否拥有黄金飞机动态设置最大强化等级
-    const MAX_UPGRADE_LEVEL = hasGoldenFighter ? GOLDEN_MAX_UPGRADE_LEVEL : BASE_MAX_UPGRADE_LEVEL;
+    // 根据当前使用的飞机动态设置最大强化等级
+    const MAX_UPGRADE_LEVEL = isUsingGoldenFighter ? GOLDEN_MAX_UPGRADE_LEVEL : BASE_MAX_UPGRADE_LEVEL;
     
     const button = event.target;
     const type = button.dataset.type;
@@ -1277,7 +1286,10 @@ function activatePowerUp(type, currentTime) {
     let duration = BASE_POWER_UP_DURATION;
     const durationLevelKey = type + 'DurationLevel';
     if (upgradeLevels[durationLevelKey] !== undefined) {
-        duration += upgradeLevels[durationLevelKey] * POWER_UP_DURATION_INCREMENT_PER_LEVEL;
+        const effectiveDurationLevel = isUsingGoldenFighter
+            ? upgradeLevels[durationLevelKey]
+            : Math.min(upgradeLevels[durationLevelKey], BASE_MAX_UPGRADE_LEVEL);
+        duration += effectiveDurationLevel * POWER_UP_DURATION_INCREMENT_PER_LEVEL;
     }
     
     // 黄金飞机双倍持续时间效果
