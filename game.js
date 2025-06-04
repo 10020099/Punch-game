@@ -1503,6 +1503,21 @@ function toggleFighter() {
         isUsingGoldenFighter = !isUsingGoldenFighter;
         updatePlayerImage();
         applyUpgrades(); // 重新应用所有属性
+
+        // 切换飞机后同步当前属性
+        if (
+            player.isSuperComboActive ||
+            player.activePowerUps[POWER_UP_TYPES.ATTACK_SPEED] ||
+            player.activePowerUps[POWER_UP_TYPES.SUPER_COMBO] ||
+            player.activePowerUps['CHEAT_SUPER_EFFECT']
+        ) {
+            player.currentAttackSpeed = player.baseAttackSpeed / 2;
+        } else {
+            player.currentAttackSpeed = player.baseAttackSpeed;
+        }
+        if (player.shield > player.maxShield) {
+            player.shield = player.maxShield;
+        }
         updateGoldenFighterStatus();
         debugLog(`切换到${isUsingGoldenFighter ? '黄金飞机' : '普通飞机'}`);
         
