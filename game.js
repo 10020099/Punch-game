@@ -149,6 +149,7 @@ let enemyInterval; // 用于控制普通敌人的生成
 const baseBossShield = 100; // Boss基础护盾
 const baseBossHealth = 200; // Boss基础血量
 let bossSpawnCount = 0; // Boss出现次数计数器
+let boss2SpawnCount = 0; // Boss 2出现次数计数器
 
 let backgroundIndex = 1;
 let backgroundChangeThreshold = 100; // 移动距离阈值，用于切换背景
@@ -172,6 +173,10 @@ enemyImage2.src = 'assets/images/enemy fighter 2.png';
 // 加载Boss图片
 const bossImage = new Image();
 bossImage.src = 'assets/images/boss.png'; // 确保boss图片路径正确
+
+// 加载Boss图片2
+const bossImage2 = new Image();
+bossImage2.src = 'assets/images/boss 2.png';
 
 // 加载黄金战机图片
 const goldenFighterImage = new Image();
@@ -207,6 +212,24 @@ function initializeGame() {
     }
     debugLog("加载的强化等级:", upgradeLevels);
 
+    // Load Boss 1 defeat count
+    const savedBossSpawnCount = localStorage.getItem('bossSpawnCount');
+    if (savedBossSpawnCount !== null) {
+        bossSpawnCount = parseInt(savedBossSpawnCount, 10) || 0;
+    } else {
+        bossSpawnCount = 0; // Default if not found
+    }
+    debugLog(`Loaded Boss 1 defeat count: ${bossSpawnCount}`);
+
+    // Load Boss 2 defeat count
+    const savedBoss2SpawnCount = localStorage.getItem('boss2SpawnCount');
+    if (savedBoss2SpawnCount !== null) {
+        boss2SpawnCount = parseInt(savedBoss2SpawnCount, 10) || 0;
+    } else {
+        boss2SpawnCount = 0; // Default if not found
+    }
+    debugLog(`Loaded Boss 2 defeat count: ${boss2SpawnCount}`);
+
     // 加载黄金飞机拥有状态
     const savedHasGoldenFighter = localStorage.getItem('hasGoldenFighter');
     hasGoldenFighter = savedHasGoldenFighter === 'true';
@@ -235,7 +258,7 @@ function initializeGame() {
     scoreForBossTrigger = 0; // 初始化用于Boss触发的分数
     scoreElement.textContent = `分数: ${score}`;
     nextBossScore = scoreForBoss; 
-    bossSpawnCount = 0; 
+    // bossSpawnCount and boss2SpawnCount are now loaded from localStorage or defaulted to 0
     bossActive = false;
     boss = null;
 
@@ -616,20 +639,40 @@ function createEnemy() {
 
 function createBoss() {
     enemies = []; // 清除所有普通敌人
-    const currentShield = baseBossShield * (1 + 0.1 * bossSpawnCount);
-    const currentHealth = baseBossHealth * (1 + 0.1 * bossSpawnCount);
+    let bossType;
+    let currentShield;
+    let currentHealth;
+    let bossImg;
+    const bossWidth = 200;
+    const bossHeight = 150;
+
+    if (Math.random() < 0.5) {
+        // Boss 2
+        bossType = 'boss2';
+        currentShield = (baseBossShield * (1 + 0.1 * boss2SpawnCount)) * 2; // Use boss2SpawnCount
+        currentHealth = (baseBossHealth * (1 + 0.1 * boss2SpawnCount)) * 2; // Use boss2SpawnCount
+        bossImg = bossImage2;
+    } else {
+        // Boss 1 (Original)
+        bossType = 'boss1';
+        currentShield = baseBossShield * (1 + 0.1 * bossSpawnCount);
+        currentHealth = baseBossHealth * (1 + 0.1 * bossSpawnCount);
+        bossImg = bossImage;
+        // Spawn counts are now incremented on defeat
+    }
 
     boss = {
+        type: bossType,
         x: canvas.width / 2,
         y: 150, // Boss初始Y位置
-        width: 200, // Boss宽度，根据图片调整
-        height: 150, // Boss高度，根据图片调整
+        width: bossWidth, // Boss宽度
+        height: bossHeight, // Boss高度
         speed: 0.5, // Boss移动速度
         shield: currentShield,
         health: currentHealth,
         maxShield: currentShield, // 存储最大护盾值
         maxHealth: currentHealth, // 存储最大健康值
-        image: bossImage,
+        image: bossImg,
         dx: Math.random() < 0.5 ? -1 : 1, // 初始移动方向
         bullets: [],
         lastAttackTime: 0,
@@ -638,9 +681,8 @@ function createBoss() {
         attackCooldown: false // 攻击冷却状态
     };
     bossActive = true;
-    bossSpawnCount++; // Boss出现次数增加
     clearInterval(enemyInterval); // 停止生成普通敌人
-    debugLog(`Boss出现了! 第 ${bossSpawnCount} 次. 护盾: ${boss.shield}, 血量: ${boss.health}`);
+    debugLog(`Boss (${boss.type})出现了! 第 ${boss.type === 'boss1' ? bossSpawnCount : boss2SpawnCount} 次 (scaling based on previous defeats). 护盾: ${boss.shield}, 血量: ${boss.health}`);
 }
 
 // 螺旋弹幕攻击
@@ -909,16 +951,33 @@ function update() {
                 if (boss.health < 0) boss.health = 0;
 
                 if (boss.health <= 0) {
-                    let bossKillScore = 500 + (bossSpawnCount - 1) * 100;
+                    let bossKillScore = 500; // Base score for defeating a boss
+                    // Adjust score based on which boss and its spawn count (difficulty)
+                    if (boss.type === 'boss1') {
+                        bossKillScore += (bossSpawnCount) * 100; // bossSpawnCount already reflects current encounter's level due to createBoss logic
+                    } else if (boss.type === 'boss2') {
+                        bossKillScore += (boss2SpawnCount) * 150; // Boss 2 might be worth more
+                    }
+
                     if (player.isScoreMultiplierActive) bossKillScore *= 2;
                     score += bossKillScore; // 总分增加
-                    // scoreForBossTrigger 不增加 Boss 击杀分数
                     scoreElement.textContent = `分数: ${score}`;
+
+                    const defeatedBossType = boss.type; // Store type before boss is nulled
                     bossActive = false;
                     boss = null;
+
+                    // Increment defeat counters for scaling next appearance
+                    if (defeatedBossType === 'boss1') {
+                        bossSpawnCount++;
+                        debugLog(`Boss 1 defeated. Boss 1 appearance count for next scaling: ${bossSpawnCount}`);
+                    } else if (defeatedBossType === 'boss2') {
+                        boss2SpawnCount++;
+                        debugLog(`Boss 2 defeated. Boss 2 appearance count for next scaling: ${boss2SpawnCount}`);
+                    }
                     
                     nextBossScore += scoreForBoss; 
-                    debugLog(`Boss 被击败! 下一个Boss将在 ${nextBossScore} (触发分)时出现. 当前总分: ${score}, 当前触发分: ${scoreForBossTrigger}`);
+                    debugLog(`Boss (${defeatedBossType}) 被击败! Next Boss score trigger: ${nextBossScore}. Total score: ${score}, Boss trigger score: ${scoreForBossTrigger}`);
 
                     startEnemyCreation(); 
                     break;
@@ -1108,6 +1167,12 @@ function gameOver() {
     totalCurrency += earnedCurrency;
     localStorage.setItem('totalGameCurrency', totalCurrency);
 
+    // Save Boss defeat counts
+    localStorage.setItem('bossSpawnCount', bossSpawnCount);
+    debugLog(`Saved Boss 1 defeat count: ${bossSpawnCount}`);
+    localStorage.setItem('boss2SpawnCount', boss2SpawnCount);
+    debugLog(`Saved Boss 2 defeat count: ${boss2SpawnCount}`);
+
     // alert(`游戏结束！\n本局得分: ${score}\n获得积分: ${earnedCurrency}\n总积分: ${totalCurrency}`);
     document.getElementById('final-score-display').textContent = score;
     document.getElementById('earned-currency-display').textContent = earnedCurrency;
@@ -1147,7 +1212,7 @@ function gameOver() {
     nextBossScore = scoreForBoss * (Math.floor(scoreForBossTrigger / scoreForBoss) + 1); 
     if (scoreForBossTrigger < scoreForBoss) nextBossScore = scoreForBoss; 
     
-    bossSpawnCount = 0; 
+    // bossSpawnCount and boss2SpawnCount are NOT reset here, they persist across games.
     powerUps = []; // 清空屏幕上的道具
     lastPowerUpSpawnTime = 0; // 重置道具生成计时
     scoreForBossTrigger = 0; // 重置用于触发Boss的分数
