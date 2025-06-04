@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空战游戏</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="canvas-background"></div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="score">分数: 0</div>
+        <div id="game-title">空战传奇</div>
+        <div id="game-controls">
+            <p>方向键: 移动</p>
+            <p>空格键: 切换场地Buff</p>
+            <p>U键: 打开/关闭强化面板</p>
+            <p>F键: 切换飞机</p>
+        </div>
+        <div id="game-status"></div>
+        <div id="start-button">开始游戏</div>
+        <div id="game-over">
+            <h2>游戏结束</h2>
+            <p>最终得分: <span id="final-score-display">0</span></p>
+            <p>获得积分: <span id="earned-currency-display">0</span></p>
+            <p>总积分: <span id="total-currency-display-gameover">0</span></p>
+            <button id="restart-button">重新开始</button>
+            <button id="open-upgrade-panel-button-gameover">打开强化</button>
+        </div>
+    </div>
+
+    <!-- 强化面板 -->
+    <div id="upgrade-panel" style="display:none;">
+        <h2>强化中心</h2>
+        <p>总积分: <span id="upgrade-panel-currency">0</span></p>
+        <button id="close-upgrade-panel-button">关闭</button>
+        <hr>
+
+        <!-- 黄金飞机购买和切换 -->
+        <div class="upgrade-category" id="golden-fighter-container">
+            <h3>特殊飞机</h3>
+            <div class="upgrade-item">
+                <img src="assets/images/Golden Fighter.png" alt="黄金飞机" style="width:60px; height:60px;">
+                <div>
+                    <span class="item-name">黄金飞机</span>
+                    <p class="item-effect">所有增益效果双倍！(道具持续时间、自身属性、场地buff等)</p>
+                    <div id="golden-fighter-status">
+                        <!-- 状态将由JS动态更新 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <hr>
+
+        <div class="upgrade-category" id="power-up-upgrades-container">
+            <h3>道具强化 (持续时间)</h3>
+            <!-- 道具强化项将由JS动态生成 -->
+        </div>
+        <hr>
+
+        <div class="upgrade-category" id="player-stat-upgrades-container">
+            <h3>战机属性强化</h3>
+            <!-- 战机属性强化项将由JS动态生成 -->
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
