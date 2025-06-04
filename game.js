@@ -1019,6 +1019,11 @@ function handlePlayerHit(damage) {
 
 
 function gameOver() {
+    // 暂停游戏循环并清理计时器
+    isGamePaused = true;
+    cancelAnimationFrame(gameLoopRequestId);
+    clearInterval(enemyInterval);
+
     const earnedCurrency = Math.floor(score / 2);
     totalCurrency += earnedCurrency;
     localStorage.setItem('totalGameCurrency', totalCurrency);
@@ -1065,7 +1070,7 @@ function gameOver() {
     bossSpawnCount = 0; 
     powerUps = []; // 清空屏幕上的道具
     lastPowerUpSpawnTime = 0; // 重置道具生成计时
-    startEnemyCreation(); 
+    scoreForBossTrigger = 0; // 重置用于触发Boss的分数
 }
 
 function draw() {
@@ -1469,8 +1474,7 @@ function startEnemyCreation() {
 // --- 游戏启动 ---
 initializeGame(); // 初始化游戏数据
 renderUpgradePanel(); // 初始渲染一次强化面板，确保按钮事件绑定
-startEnemyCreation(); 
-gameLoopRequestId = requestAnimationFrame(gameLoop); // 启动游戏循环并保存ID
+// 游戏将在点击开始按钮或重新开始按钮时启动
 
 // 更新玩家飞机图像
 function updatePlayerImage() {
@@ -1555,4 +1559,28 @@ function updateGoldenFighterStatus() {
         };
         statusContainer.appendChild(buyButton);
     }
+}
+
+// 重新开始游戏
+function restartGame() {
+    document.getElementById('game-over').style.display = 'none';
+    initializeGame();
+    isGamePaused = false;
+    startEnemyCreation();
+    gameLoopRequestId = requestAnimationFrame(gameLoop);
+}
+
+// 绑定开始和重新开始按钮事件
+const startButton = document.getElementById('start-button');
+if (startButton) {
+    startButton.style.display = 'block';
+    startButton.addEventListener('click', () => {
+        startButton.style.display = 'none';
+        restartGame();
+    });
+}
+
+const restartButton = document.getElementById('restart-button');
+if (restartButton) {
+    restartButton.addEventListener('click', restartGame);
 }
