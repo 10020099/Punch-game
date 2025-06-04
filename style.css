@@ -460,3 +460,36 @@ body::before {
     50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.9); }
     100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.7); }
 }
+
+/* --- 作弊面板样式 --- */
+#cheat-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 20px;
+    background: rgba(30, 30, 50, 0.95);
+    color: #fff;
+    border: 3px solid rgba(255, 215, 0, 0.7);
+    border-radius: 15px;
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+    z-index: 110;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#cheat-panel button {
+    background: linear-gradient(145deg, #FF8C00, #FFD700);
+    color: #000;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s ease;
+}
+
+#cheat-panel button:hover {
+    background: linear-gradient(145deg, #FFA500, #FFFF00);
+}

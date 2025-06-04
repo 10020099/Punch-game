@@ -17,6 +17,7 @@
             <p>空格键: 切换场地Buff</p>
             <p>U键: 打开/关闭强化面板</p>
             <p>F键: 切换飞机</p>
+            <p>K键: 打开作弊面板</p>
         </div>
         <div id="game-status"></div>
         <div id="start-button">开始游戏</div>
@@ -63,6 +64,14 @@
             <h3>战机属性强化</h3>
             <!-- 战机属性强化项将由JS动态生成 -->
         </div>
+    </div>
+
+    <!-- 作弊面板 -->
+    <div id="cheat-panel" style="display:none;">
+        <h2>作弊码</h2>
+        <button class="cheat-button" data-code="tq123">获得10000积分</button>
+        <button class="cheat-button" data-code="tq456">超级组合20秒</button>
+        <button id="close-cheat-panel-button">关闭</button>
     </div>
 
     <script src="game.js"></script>

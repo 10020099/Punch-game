@@ -7,6 +7,8 @@ const openUpgradePanelButtonGameOver = document.getElementById('open-upgrade-pan
 const upgradePanelCurrencyDisplay = document.getElementById('upgrade-panel-currency');
 const powerUpUpgradesContainer = document.getElementById('power-up-upgrades-container');
 const playerStatUpgradesContainer = document.getElementById('player-stat-upgrades-container');
+const cheatPanel = document.getElementById('cheat-panel');
+const closeCheatPanelButton = document.getElementById('close-cheat-panel-button');
 
 // 调试开关
 const DEBUG = false;
@@ -32,6 +34,26 @@ let gameLoopRequestId;
 // 作弊码缓冲
 let cheatCodeBuffer = "";
 const CHEAT_EFFECT_DURATION = 20000; // 作弊码效果持续20秒
+
+function activateCheatCode(code) {
+    if (code === 'tq123') {
+        totalCurrency += 10000;
+        localStorage.setItem('totalGameCurrency', totalCurrency);
+        updateGameUIDisplays();
+        if (upgradePanel.style.display === 'block') {
+            renderUpgradePanel();
+        }
+        debugLog('作弊码激活: tq123 - 增加10000积分');
+        alert('作弊码激活: 增加10000积分');
+    } else if (code === 'tq456') {
+        player.isDoubleShotActive = true;
+        player.currentAttackSpeed = player.baseAttackSpeed / 2;
+        player.isScoreMultiplierActive = true;
+        player.activePowerUps['CHEAT_SUPER_EFFECT'] = Date.now() + CHEAT_EFFECT_DURATION;
+        debugLog('作弊码激活: tq456 - 临时超级组合效果 (20秒)');
+        alert('作弊码激活: 临时超级组合效果 (20秒)');
+    }
+}
 
 // 黄金飞机系统
 const GOLDEN_FIGHTER_PRICE = 5000;  // 黄金飞机价格
@@ -306,33 +328,17 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'KeyF') {
         toggleFighter();
     }
+    // 'K' 键打开作弊面板
+    if (e.code === 'KeyK') {
+        toggleCheatPanel();
+    }
 
     // 作弊码逻辑
     if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) { // 只接受字母和数字
         cheatCodeBuffer += e.key.toLowerCase();
-        // debugLog("Cheat buffer: ", cheatCodeBuffer);
-        // 可选：限制缓冲长度，例如 cheatCodeBuffer = cheatCodeBuffer.slice(-10);
     } else if (e.code === 'Enter') {
-        if (cheatCodeBuffer === 'tq123') {
-            totalCurrency += 10000;
-            localStorage.setItem('totalGameCurrency', totalCurrency);
-            updateGameUIDisplays(); // 更新所有相关的UI显示
-            if (upgradePanel.style.display === 'block') { // 如果强化面板开着，也更新它
-                renderUpgradePanel();
-            }
-            debugLog("作弊码激活: tq123 - 增加10000积分");
-            alert("作弊码激活: 增加10000积分");
-        } else if (cheatCodeBuffer === 'tq456') {
-            // 激活类超级组合效果，但不计入永久激活
-            player.isDoubleShotActive = true;
-            player.currentAttackSpeed = player.baseAttackSpeed / 2; 
-            player.isScoreMultiplierActive = true;
-            // 设置一个计时器来取消这些效果
-            player.activePowerUps['CHEAT_SUPER_EFFECT'] = Date.now() + CHEAT_EFFECT_DURATION;
-            debugLog("作弊码激活: tq456 - 临时超级组合效果 (20秒)");
-            alert("作弊码激活: 临时超级组合效果 (20秒)");
-        }
-        cheatCodeBuffer = ""; // 无论是否匹配都清空缓冲
+        activateCheatCode(cheatCodeBuffer);
+        cheatCodeBuffer = "";
     }
 });
 
@@ -372,6 +378,49 @@ function closeUpgradePanel() {
     gameLoopRequestId = requestAnimationFrame(gameLoop); // 重新启动游戏循环
     debugLog("游戏已恢复，强化面板关闭");
 }
+
+// --- 作弊面板控制 ---
+function toggleCheatPanel() {
+    if (cheatPanel.style.display === 'none') {
+        openCheatPanel();
+    } else {
+        closeCheatPanel();
+    }
+}
+
+function openCheatPanel() {
+    isGamePaused = true;
+    cancelAnimationFrame(gameLoopRequestId);
+    clearInterval(enemyInterval);
+    if (upgradePanel.style.display === 'block') {
+        upgradePanel.style.display = 'none';
+    }
+    cheatPanel.style.display = 'block';
+    debugLog('游戏已暂停，作弊面板打开');
+}
+
+function closeCheatPanel() {
+    isGamePaused = false;
+    cheatPanel.style.display = 'none';
+    if (!bossActive) {
+        startEnemyCreation();
+    }
+    gameLoopRequestId = requestAnimationFrame(gameLoop);
+    debugLog('游戏已恢复，作弊面板关闭');
+}
+
+// 事件监听：关闭作弊面板按钮
+if (closeCheatPanelButton) {
+    closeCheatPanelButton.addEventListener('click', closeCheatPanel);
+}
+
+// 事件监听：作弊按钮
+document.querySelectorAll('.cheat-button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code');
+        activateCheatCode(code);
+    });
+});
 
 // 事件监听：关闭强化面板按钮
 if (closeUpgradePanelButton) {
