@@ -23,6 +23,25 @@ function releaseBullet(bullet) {
     bulletPool.push(bullet);
 }
 
+// ---------------------------------------------------------------------------
+// 对象池：复用「敌人」与「道具」对象以减少频繁的 GC 触发，优化长时间游玩时的性能
+// ---------------------------------------------------------------------------
+const enemyPool = [];
+function getEnemy() {
+    return enemyPool.pop() || {};
+}
+function releaseEnemy(enemy) {
+    enemy.image = null;           // 断开对 Image 的引用，帮助浏览器更快回收贴图
+    enemyPool.push(enemy);
+}
+
+const powerUpPool = [];
+function getPowerUpObj() {
+    return powerUpPool.pop() || {};
+}
+function releasePowerUpObj(p) {
+    powerUpPool.push(p);
+}
 
 // --- 游戏全局状态 ---
 let score = 0;
@@ -616,13 +635,14 @@ function updateGameUIDisplays() {
 function createEnemy() {
     if (!bossActive) { // 只有在没有Boss时才创建普通敌人
         const isStrongerEnemy = Math.random() < 0.5; // 50% chance for a stronger enemy
-        let newEnemy = {
+        let newEnemy = getEnemy();                // 使用对象池
+        Object.assign(newEnemy, {
             x: Math.random() * (canvas.width - 50), // 减去敌人宽度，防止出界
             y: -50, // 从画布外生成
             width: 50,
             height: 50,
             speed: 1.0
-        };
+        });
 
         if (isStrongerEnemy) {
             newEnemy.image = enemyImage2;
@@ -806,6 +826,101 @@ function circularBulletAttack() {
     }, waveCount * 800 + 500);  // 额外等待500ms
 }
 
+// ---------------------------------------------------------------------------
+// Boss 2 专属攻击模组
+// ---------------------------------------------------------------------------
+
+// 1) 扇形散射：正前方 5 发子弹呈扇形快速扫射
+function fanSpreadAttack() {
+    if (!boss || isGamePaused) return;
+    const waves = 4;           // 扫射 4 轮
+    const bulletsPerWave = 5;
+    const spread = Math.PI / 4;       // 总扩散角 45°
+    const bulletSpeed = 2.4;
+    boss.attackCooldown = true;
+
+    for (let w = 0; w < waves; w++) {
+        setTimeout(() => {
+            if (!boss || isGamePaused) return;
+            for (let i = 0; i < bulletsPerWave; i++) {
+                const angle = (i / (bulletsPerWave - 1) - 0.5) * spread;
+                const vx = Math.sin(angle) * bulletSpeed;
+                const vy = Math.cos(angle) * bulletSpeed; // 主要向下
+                const b = getBullet();
+                b.x = boss.x;
+                b.y = boss.y + boss.height / 2;
+                b.width = 8;
+                b.height = 12;
+                b.dx = vx;
+                b.dy = vy;
+                b.damage = 8;
+                b.color = '#FFA500';   // 橙色
+                boss.bullets.push(b);
+            }
+        }, w * 250); // 每 0.25 s 一轮
+    }
+    setTimeout(() => { if (boss) boss.attackCooldown = false; }, waves * 250 + 200);
+}
+
+// 2) 反弹弹：两侧各发射 3 颗可在屏幕左右弹跳的子弹
+function zigzagBounceAttack() {
+    if (!boss || isGamePaused) return;
+    const sides = [-1, 1];          // 左 / 右 两组
+    const bulletSpeed = 2.2;
+    boss.attackCooldown = true;
+
+    sides.forEach(side => {
+        for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+                if (!boss || isGamePaused) return;
+                const b = getBullet();
+                b.x = side === -1 ? 10 : canvas.width - 10;
+                b.y = boss.y + boss.height / 2;
+                b.width = 10;
+                b.height = 10;
+                b.dx = side * bulletSpeed;
+                b.dy = 1.2;
+                b.damage = 10;
+                b.color = '#ADFF2F';   // 黄绿
+                b.bounceRemaining = 4; // 可弹 4 次
+                boss.bullets.push(b);
+            }, i * 400);              // 同侧逐次发射
+        }
+    });
+
+    setTimeout(() => { if (boss) boss.attackCooldown = false; }, 1800);
+}
+
+// 3) 扩张环：中心发射两圈子弹，第二圈稍后、半径略大
+function expandingRingAttack() {
+    if (!boss || isGamePaused) return;
+    const rings = 2;
+    const bulletsPerRing = 18;
+    const baseSpeed = 1.6;
+    boss.attackCooldown = true;
+
+    for (let r = 0; r < rings; r++) {
+        setTimeout(() => {
+            if (!boss || isGamePaused) return;
+            for (let i = 0; i < bulletsPerRing; i++) {
+                const angle = (Math.PI * 2 * i) / bulletsPerRing + (r % 2) * (Math.PI / bulletsPerRing);
+                const s = baseSpeed + r * 0.4;
+                const b = getBullet();
+                b.x = boss.x;
+                b.y = boss.y + boss.height / 2;
+                b.width = 9;
+                b.height = 9;
+                b.dx = Math.cos(angle) * s;
+                b.dy = Math.sin(angle) * s;
+                b.damage = 9;
+                b.color = '#00BFFF'; // 深天蓝
+                boss.bullets.push(b);
+            }
+        }, r * 500);
+    }
+    setTimeout(() => { if (boss) boss.attackCooldown = false; }, rings * 500 + 400);
+}
+
 function update() {
     // Boss 生成逻辑
     if (scoreForBossTrigger >= nextBossScore && !bossActive) { // 使用 scoreForBossTrigger 判断
@@ -902,6 +1017,7 @@ function update() {
             let enemy = enemies[i];
             enemy.y += enemy.speed;
             if (enemy.y > canvas.height) {
+                releaseEnemy(enemy);
                 enemies.splice(i, 1);
             }
         }
@@ -996,21 +1112,21 @@ function update() {
 
         // Boss 攻击逻辑 - 使用三种新的攻击模式
         if (boss && currentTime - boss.lastAttackTime > boss.attackInterval && !boss.attackCooldown) {
-            // 随机选择一种攻击方式
-            boss.currentAttackType = Math.floor(Math.random() * 3); // 0-2之间的随机整数
-            
-            switch (boss.currentAttackType) {
-                case 0:
-                    spiralBulletAttack(); // 螺旋弹幕
-                    break;
-                case 1:
-                    homingBulletAttack(); // 追踪弹
-                    break;
-                case 2:
-                    circularBulletAttack(); // 圆形扩散弹幕
-                    break;
+            // 根据 Boss 类型选择专属攻击
+            boss.currentAttackType = Math.floor(Math.random() * 3);
+            if (boss.type === 'boss1') {
+                switch (boss.currentAttackType) {
+                    case 0: spiralBulletAttack(); break;
+                    case 1: homingBulletAttack(); break;
+                    case 2: circularBulletAttack(); break;
+                }
+            } else if (boss.type === 'boss2') {
+                switch (boss.currentAttackType) {
+                    case 0: fanSpreadAttack(); break;
+                    case 1: zigzagBounceAttack(); break;
+                    case 2: expandingRingAttack(); break;
+                }
             }
-            
             boss.lastAttackTime = currentTime;
         }
 
@@ -1066,6 +1182,13 @@ function update() {
                     boss.bullets.splice(i, 1);
                     releaseBullet(bBullet);
                 }
+
+                // 反弹逻辑（Boss2 Zig-Zag）
+                if (bBullet.bounceRemaining > 0 &&
+                    (bBullet.x - bBullet.width / 2 <= 0 || bBullet.x + bBullet.width / 2 >= canvas.width)) {
+                    bBullet.dx *= -1;
+                    bBullet.bounceRemaining--;
+                }
             }
         }
     }
@@ -1089,6 +1212,7 @@ function update() {
                     enemy.health -= 1; // Assuming player bullet does 1 damage
 
                     if (enemy.health <= 0) {
+                        releaseEnemy(enemy);
                         enemies.splice(i, 1);
                         let enemyKillScore = (enemy.type === 'fighter2') ? 20 : 10; // More points for stronger enemy
                         if (player.isScoreMultiplierActive) enemyKillScore *= 2;
@@ -1127,7 +1251,8 @@ function update() {
                 player.x + player.width > enemy.x &&
                 player.y < enemy.y + enemy.height &&
                 player.y + player.height > enemy.y) {
-                enemies.splice(i, 1); // 敌人消失
+                releaseEnemy(enemy);
+                enemies.splice(i, 1);
                 handlePlayerHit(10); // 假设普通敌人碰撞造成10点伤害
                 break;
             }
@@ -1181,7 +1306,7 @@ function gameOver() {
     
     score = 0;
     scoreElement.textContent = `分数: ${score}`;
-    enemies = []; 
+    clearEnemiesArray(); // 清除所有普通敌人并释放对象
     player.x = canvas.width / 2;
     player.y = canvas.height - 30;
     player.bullets.forEach(releaseBullet);
@@ -1213,7 +1338,7 @@ function gameOver() {
     if (scoreForBossTrigger < scoreForBoss) nextBossScore = scoreForBoss; 
     
     // bossSpawnCount and boss2SpawnCount are NOT reset here, they persist across games.
-    powerUps = []; // 清空屏幕上的道具
+    clearPowerUpsArray(); // 清空屏幕上的道具并释放对象
     lastPowerUpSpawnTime = 0; // 重置道具生成计时
     scoreForBossTrigger = 0; // 重置用于触发Boss的分数
 }
@@ -1380,7 +1505,8 @@ function createPowerUp() {
         case POWER_UP_TYPES.SUPER_COMBO: color = 'rainbow'; break;
         default: color = 'grey';
     }
-    powerUps.push({
+    const p = getPowerUpObj();
+    Object.assign(p, {
         x: Math.random() * (canvas.width - POWER_UP_SIZE),
         y: -POWER_UP_SIZE,
         width: POWER_UP_SIZE,
@@ -1389,6 +1515,7 @@ function createPowerUp() {
         color: color,
         speed: POWER_UP_SPEED
     });
+    powerUps.push(p);
     debugLog(`生成道具: ${type}${type === POWER_UP_TYPES.SUPER_COMBO ? ' (黄金飞机专属)' : ''}`);
 }
 
@@ -1409,6 +1536,7 @@ function updatePowerUps(currentTime) {
 
         if (p.y > canvas.height) {
             powerUps.splice(i, 1);
+            releasePowerUpObj(p);            // 归还至对象池
         }
     }
 }
@@ -1749,4 +1877,16 @@ if (startButton) {
 const restartButton = document.getElementById('restart-button');
 if (restartButton) {
     restartButton.addEventListener('click', restartGame);
+}
+
+// ---------------------------------------------------------------------------
+// 辅助：批量清理并将对象归还到池，避免内存泄漏
+// ---------------------------------------------------------------------------
+function clearEnemiesArray() {
+    for (const e of enemies) releaseEnemy(e);
+    enemies.length = 0;
+}
+function clearPowerUpsArray() {
+    for (const p of powerUps) releasePowerUpObj(p);
+    powerUps.length = 0;
 }
