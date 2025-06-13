@@ -24,6 +24,142 @@ function releaseBullet(bullet) {
 }
 
 // ---------------------------------------------------------------------------
+// 特效系统 - 粒子效果和视觉特效
+// ---------------------------------------------------------------------------
+const particlePool = [];
+function getParticle() {
+    return particlePool.pop() || {};
+}
+function releaseParticle(particle) {
+    particlePool.push(particle);
+}
+
+let particles = [];
+let screenShake = { x: 0, y: 0, intensity: 0, duration: 0 };
+let screenFlash = { opacity: 0, duration: 0 };
+
+// 创建粒子效果 - 性能优化
+function createParticles(x, y, count, options = {}) {
+    // 限制粒子总数，避免性能问题
+    if (particles.length > 150) {
+        count = Math.min(count, Math.max(1, 200 - particles.length));
+    }
+
+    const defaults = {
+        color: '#FFD700',
+        size: 3,
+        speed: 2,
+        life: 1000,
+        spread: Math.PI * 2,
+        gravity: 0
+    };
+    const config = { ...defaults, ...options };
+
+    for (let i = 0; i < count; i++) {
+        const particle = getParticle();
+        particle.x = x;
+        particle.y = y;
+        particle.vx = Math.cos(Math.random() * config.spread) * config.speed * (0.5 + Math.random() * 0.5);
+        particle.vy = Math.sin(Math.random() * config.spread) * config.speed * (0.5 + Math.random() * 0.5);
+        particle.size = config.size * (0.5 + Math.random() * 0.5);
+        particle.color = config.color;
+        particle.life = config.life;
+        particle.maxLife = config.life;
+        particle.gravity = config.gravity;
+        particles.push(particle);
+    }
+}
+
+// 更新粒子系统 - 性能优化
+function updateParticles() {
+    // 限制粒子数量以提升性能
+    if (particles.length > 200) {
+        const excess = particles.length - 200;
+        for (let i = 0; i < excess; i++) {
+            releaseParticle(particles.shift());
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.gravity;
+        p.life -= 16; // 假设60fps，每帧约16ms
+
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+            releaseParticle(p);
+        }
+    }
+}
+
+// 绘制粒子 - 性能优化
+function drawParticles() {
+    if (particles.length === 0) return; // 无粒子时直接返回
+
+    ctx.save();
+    for (const p of particles) {
+        const alpha = p.life / p.maxLife;
+        if (alpha < 0.05) continue; // 跳过几乎透明的粒子
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+// 屏幕震动效果
+function addScreenShake(intensity, duration) {
+    screenShake.intensity = Math.max(screenShake.intensity, intensity);
+    screenShake.duration = Math.max(screenShake.duration, duration);
+}
+
+// 更新屏幕震动
+function updateScreenShake() {
+    if (screenShake.duration > 0) {
+        screenShake.x = (Math.random() - 0.5) * screenShake.intensity;
+        screenShake.y = (Math.random() - 0.5) * screenShake.intensity;
+        screenShake.duration -= 16;
+        screenShake.intensity *= 0.95; // 逐渐减弱
+    } else {
+        screenShake.x = 0;
+        screenShake.y = 0;
+        screenShake.intensity = 0;
+    }
+}
+
+// 屏幕闪白效果
+function addScreenFlash(opacity, duration) {
+    screenFlash.opacity = Math.max(screenFlash.opacity, opacity);
+    screenFlash.duration = Math.max(screenFlash.duration, duration);
+}
+
+// 更新屏幕闪白
+function updateScreenFlash() {
+    if (screenFlash.duration > 0) {
+        screenFlash.duration -= 16;
+        screenFlash.opacity *= 0.9; // 逐渐消失
+    } else {
+        screenFlash.opacity = 0;
+    }
+}
+
+// 绘制屏幕闪白
+function drawScreenFlash() {
+    if (screenFlash.opacity > 0) {
+        ctx.save();
+        ctx.globalAlpha = screenFlash.opacity;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 对象池：复用「敌人」与「道具」对象以减少频繁的 GC 触发，优化长时间游玩时的性能
 // ---------------------------------------------------------------------------
 const enemyPool = [];
@@ -719,132 +855,251 @@ function createBoss() {
         baseAttackInterval: baseAttackInterval,
         currentAttackType: 0, // 0: 螺旋弹幕, 1: 追踪弹, 2: 圆形扩散
         attackCooldown: false, // 攻击冷却状态
-        bulletSpeedFactor: bossMode ? BOSS_MODE_BULLET_SPEED_FACTOR : 1
+        bulletSpeedFactor: bossMode ? BOSS_MODE_BULLET_SPEED_FACTOR : 1,
+        // 特效相关属性
+        spawnTime: Date.now(),
+        isSpawning: true,
+        spawnDuration: 2000, // 出现动画持续2秒
+        energyRingRotation: 0,
+        damageFlashTime: 0,
+        chargingAttack: false,
+        chargeStartTime: 0
     };
     bossActive = true;
     clearInterval(enemyInterval); // 停止生成普通敌人
+
+    // Boss出现特效
+    createBossSpawnEffects();
+
     debugLog(`Boss (${boss.type})出现了! 第 ${boss.type === 'boss1' ? bossSpawnCount : boss2SpawnCount} 次 (scaling based on previous defeats). 护盾: ${boss.shield}, 血量: ${boss.health}`);
+}
+
+// Boss出现特效
+function createBossSpawnEffects() {
+    // 屏幕震动
+    addScreenShake(15, 1000);
+
+    // 传送门粒子效果
+    createParticles(boss.x, boss.y, 50, {
+        color: boss.type === 'boss1' ? '#FF00FF' : '#00FFFF',
+        size: 8,
+        speed: 5,
+        life: 2000,
+        spread: Math.PI * 2
+    });
+
+    // 能量爆发效果
+    setTimeout(() => {
+        createParticles(boss.x, boss.y, 30, {
+            color: '#FFD700',
+            size: 12,
+            speed: 8,
+            life: 1500,
+            spread: Math.PI * 2
+        });
+        addScreenFlash(0.3, 200);
+    }, 500);
 }
 
 // 螺旋弹幕攻击
 function spiralBulletAttack() {
     if (!boss || isGamePaused) return;
-    
+
     const bulletCount = 8;  // 每一圈发射的子弹数
     const spiralDuration = 3000;  // 螺旋持续时间(ms)
     const rotationsPerSecond = 0.5;  // 每秒旋转次数
     const bulletSpeed = 1.5 * (boss && boss.bulletSpeedFactor || 1);
-    
-    let startAngle = 0;
-    boss.attackCooldown = true;
-    
-    const spiralInterval = setInterval(() => {
-        if (!boss || isGamePaused) {
-            clearInterval(spiralInterval);
-            return;
-        }
-        
-        for (let i = 0; i < bulletCount; i++) {
-            const angle = startAngle + (Math.PI * 2 * i / bulletCount);
-            const vx = Math.cos(angle) * bulletSpeed;
-            const vy = Math.sin(angle) * bulletSpeed;
-            
-            const bullet = getBullet();
-            bullet.x = boss.x;
-            bullet.y = boss.y + boss.height / 2;
-            bullet.width = 8;
-            bullet.height = 8;
-            bullet.dx = vx;
-            bullet.dy = vy;
-            bullet.damage = 10;
-            bullet.color = '#FF00FF';  // 粉紫色子弹
-            boss.bullets.push(bullet);
-        }
-        
-        startAngle += Math.PI * 2 * rotationsPerSecond / (1000 / 200);  // 按rotationsPerSecond的速率旋转
-    }, 200);  // 每200ms发射一波
-    
-    // 螺旋持续一段时间后停止
+
+    // 攻击充能特效
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(boss.x, boss.y, 20, {
+        color: '#FF00FF',
+        size: 4,
+        speed: 2,
+        life: 800,
+        spread: Math.PI * 2
+    });
+
     setTimeout(() => {
-        clearInterval(spiralInterval);
-        if(boss) boss.attackCooldown = false;
-    }, spiralDuration);
+        if (!boss || isGamePaused) return;
+
+        let startAngle = 0;
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+
+        // 攻击开始时的爆发特效
+        createParticles(boss.x, boss.y, 15, {
+            color: '#FF00FF',
+            size: 6,
+            speed: 4,
+            life: 1000,
+            spread: Math.PI * 2
+        });
+        addScreenShake(5, 300);
+
+        const spiralInterval = setInterval(() => {
+            if (!boss || isGamePaused) {
+                clearInterval(spiralInterval);
+                return;
+            }
+
+            for (let i = 0; i < bulletCount; i++) {
+                const angle = startAngle + (Math.PI * 2 * i / bulletCount);
+                const vx = Math.cos(angle) * bulletSpeed;
+                const vy = Math.sin(angle) * bulletSpeed;
+
+                const bullet = getBullet();
+                bullet.x = boss.x;
+                bullet.y = boss.y + boss.height / 2;
+                bullet.width = 8;
+                bullet.height = 8;
+                bullet.dx = vx;
+                bullet.dy = vy;
+                bullet.damage = 10;
+                bullet.color = '#FF00FF';  // 粉紫色子弹
+                bullet.hasTrail = true; // 添加轨迹效果
+                boss.bullets.push(bullet);
+            }
+
+            startAngle += Math.PI * 2 * rotationsPerSecond / (1000 / 200);  // 按rotationsPerSecond的速率旋转
+        }, 200);  // 每200ms发射一波
+
+        // 螺旋持续一段时间后停止
+        setTimeout(() => {
+            clearInterval(spiralInterval);
+            if(boss) boss.attackCooldown = false;
+        }, spiralDuration);
+    }, 800); // 充能0.8秒后开始攻击
 }
 
 // 追踪弹攻击
 function homingBulletAttack() {
     if (!boss || isGamePaused) return;
-    
+
     const bulletCount = 3;  // 发射3颗追踪弹
     const bulletSpeed = 1.2 * (boss && boss.bulletSpeedFactor || 1);
     const bulletLifespan = 8000;  // 追踪弹存在时间(ms)
-    
-    boss.attackCooldown = true;
-    
-    for (let i = 0; i < bulletCount; i++) {
-        setTimeout(() => {
-            if (!boss || isGamePaused) return;
-            
-            const bullet = getBullet();
-            bullet.x = boss.x;
-            bullet.y = boss.y + boss.height / 2;
-            bullet.width = 12;
-            bullet.height = 12;
-            bullet.dx = 0;
-            bullet.dy = bulletSpeed;
-            bullet.damage = 15;
-            bullet.color = '#00FFFF';  // 青色子弹
-            bullet.isHoming = true;
-            bullet.creationTime = Date.now();
-            bullet.trackingStrength = 0.03;  // 追踪强度，值越大追踪越敏感
 
-            boss.bullets.push(bullet);
-        }, i * 500);  // 每0.5秒发射一颗
-    }
-    
-    // 发射完所有子弹后结束冷却
+    // 攻击充能特效
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(boss.x, boss.y, 15, {
+        color: '#00FFFF',
+        size: 3,
+        speed: 1.5,
+        life: 600,
+        spread: Math.PI * 2
+    });
+
     setTimeout(() => {
-        if(boss) boss.attackCooldown = false;
-    }, bulletCount * 500 + 500);  // 额外等待500ms
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+
+        // 攻击开始特效
+        createParticles(boss.x, boss.y, 10, {
+            color: '#00FFFF',
+            size: 5,
+            speed: 3,
+            life: 800,
+            spread: Math.PI * 2
+        });
+        addScreenShake(3, 200);
+
+        for (let i = 0; i < bulletCount; i++) {
+            setTimeout(() => {
+                if (!boss || isGamePaused) return;
+
+                const bullet = getBullet();
+                bullet.x = boss.x;
+                bullet.y = boss.y + boss.height / 2;
+                bullet.width = 12;
+                bullet.height = 12;
+                bullet.dx = 0;
+                bullet.dy = bulletSpeed;
+                bullet.damage = 15;
+                bullet.color = '#00FFFF';  // 青色子弹
+                bullet.isHoming = true;
+                bullet.creationTime = Date.now();
+                bullet.trackingStrength = 0.03;  // 追踪强度，值越大追踪越敏感
+
+                boss.bullets.push(bullet);
+            }, i * 500);  // 每0.5秒发射一颗
+        }
+
+        // 发射完所有子弹后结束冷却
+        setTimeout(() => {
+            if(boss) boss.attackCooldown = false;
+        }, bulletCount * 500 + 500);  // 额外等待500ms
+    }, 600); // 充能0.6秒后开始攻击
 }
 
 // 圆形扩散弹幕
 function circularBulletAttack() {
     if (!boss || isGamePaused) return;
-    
+
     const waveCount = 3;  // 发射3波
     const bulletsPerWave = 16;  // 每波16颗子弹
     const bulletSpeed = 1.8 * (boss && boss.bulletSpeedFactor || 1);
-    
-    boss.attackCooldown = true;
-    
-    for (let wave = 0; wave < waveCount; wave++) {
-        setTimeout(() => {
-            if (!boss || isGamePaused) return;
-            
-            for (let i = 0; i < bulletsPerWave; i++) {
-                const angle = (Math.PI * 2 * i) / bulletsPerWave;
-                const vx = Math.cos(angle) * bulletSpeed;
-                const vy = Math.sin(angle) * bulletSpeed;
-                
-                const bullet = getBullet();
-                bullet.x = boss.x;
-                bullet.y = boss.y + boss.height / 2;
-                bullet.width = 10;
-                bullet.height = 10;
-                bullet.dx = vx;
-                bullet.dy = vy;
-                bullet.damage = 12;
-                bullet.color = '#FFFF00';  // 黄色子弹
-                boss.bullets.push(bullet);
-            }
-        }, wave * 800);  // 每波之间间隔0.8秒
-    }
-    
-    // 所有波次结束后取消冷却状态
+
+    // 攻击充能特效
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(boss.x, boss.y, 25, {
+        color: '#FFFF00',
+        size: 5,
+        speed: 1,
+        life: 1000,
+        spread: Math.PI * 2
+    });
+
     setTimeout(() => {
-        if(boss) boss.attackCooldown = false;
-    }, waveCount * 800 + 500);  // 额外等待500ms
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+
+        // 攻击开始特效
+        createParticles(boss.x, boss.y, 20, {
+            color: '#FFFF00',
+            size: 8,
+            speed: 5,
+            life: 1200,
+            spread: Math.PI * 2
+        });
+        addScreenShake(8, 500);
+
+        for (let wave = 0; wave < waveCount; wave++) {
+            setTimeout(() => {
+                if (!boss || isGamePaused) return;
+
+                for (let i = 0; i < bulletsPerWave; i++) {
+                    const angle = (Math.PI * 2 * i) / bulletsPerWave;
+                    const vx = Math.cos(angle) * bulletSpeed;
+                    const vy = Math.sin(angle) * bulletSpeed;
+
+                    const bullet = getBullet();
+                    bullet.x = boss.x;
+                    bullet.y = boss.y + boss.height / 2;
+                    bullet.width = 10;
+                    bullet.height = 10;
+                    bullet.dx = vx;
+                    bullet.dy = vy;
+                    bullet.damage = 12;
+                    bullet.color = '#FFFF00';  // 黄色子弹
+                    bullet.hasTrail = true; // 添加轨迹效果
+                    boss.bullets.push(bullet);
+                }
+            }, wave * 800);  // 每波之间间隔0.8秒
+        }
+
+        // 所有波次结束后取消冷却状态
+        setTimeout(() => {
+            if(boss) boss.attackCooldown = false;
+        }, waveCount * 800 + 500);  // 额外等待500ms
+    }, 1000); // 充能1秒后开始攻击
 }
 
 // ---------------------------------------------------------------------------
@@ -858,29 +1113,48 @@ function fanSpreadAttack() {
     const bulletsPerWave = 5;
     const spread = Math.PI / 4;       // 总扩散角 45°
     const bulletSpeed = 2.4 * (boss && boss.bulletSpeedFactor || 1);
-    boss.attackCooldown = true;
 
-    for (let w = 0; w < waves; w++) {
-        setTimeout(() => {
-            if (!boss || isGamePaused) return;
-            for (let i = 0; i < bulletsPerWave; i++) {
-                const angle = (i / (bulletsPerWave - 1) - 0.5) * spread;
-                const vx = Math.sin(angle) * bulletSpeed;
-                const vy = Math.cos(angle) * bulletSpeed; // 主要向下
-                const b = getBullet();
-                b.x = boss.x;
-                b.y = boss.y + boss.height / 2;
-                b.width = 8;
-                b.height = 12;
-                b.dx = vx;
-                b.dy = vy;
-                b.damage = 8;
-                b.color = '#FFA500';   // 橙色
-                boss.bullets.push(b);
-            }
-        }, w * 250); // 每 0.25 s 一轮
-    }
-    setTimeout(() => { if (boss) boss.attackCooldown = false; }, waves * 250 + 200);
+    // 攻击充能特效
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(boss.x, boss.y, 12, {
+        color: '#FFA500',
+        size: 4,
+        speed: 2,
+        life: 500,
+        spread: Math.PI / 2
+    });
+
+    setTimeout(() => {
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+        addScreenShake(4, 200);
+
+        for (let w = 0; w < waves; w++) {
+            setTimeout(() => {
+                if (!boss || isGamePaused) return;
+                for (let i = 0; i < bulletsPerWave; i++) {
+                    const angle = (i / (bulletsPerWave - 1) - 0.5) * spread;
+                    const vx = Math.sin(angle) * bulletSpeed;
+                    const vy = Math.cos(angle) * bulletSpeed; // 主要向下
+                    const b = getBullet();
+                    b.x = boss.x;
+                    b.y = boss.y + boss.height / 2;
+                    b.width = 8;
+                    b.height = 12;
+                    b.dx = vx;
+                    b.dy = vy;
+                    b.damage = 8;
+                    b.color = '#FFA500';   // 橙色
+                    b.hasTrail = true; // 添加轨迹效果
+                    boss.bullets.push(b);
+                }
+            }, w * 250); // 每 0.25 s 一轮
+        }
+        setTimeout(() => { if (boss) boss.attackCooldown = false; }, waves * 250 + 200);
+    }, 400); // 充能0.4秒后开始攻击
 }
 
 // 2) 反弹弹：两侧各发射 3 颗可在屏幕左右弹跳的子弹
@@ -888,28 +1162,53 @@ function zigzagBounceAttack() {
     if (!boss || isGamePaused) return;
     const sides = [-1, 1];          // 左 / 右 两组
     const bulletSpeed = 2.2 * (boss && boss.bulletSpeedFactor || 1);
-    boss.attackCooldown = true;
 
-    sides.forEach(side => {
-        for (let i = 0; i < 3; i++) {
-            setTimeout(() => {
-                if (!boss || isGamePaused) return;
-                const b = getBullet();
-                b.x = side === -1 ? 10 : canvas.width - 10;
-                b.y = boss.y + boss.height / 2;
-                b.width = 10;
-                b.height = 10;
-                b.dx = side * bulletSpeed;
-                b.dy = 1.2 * (boss && boss.bulletSpeedFactor || 1);
-                b.damage = 10;
-                b.color = '#ADFF2F';   // 黄绿
-                b.bounceRemaining = 4; // 可弹 4 次
-                boss.bullets.push(b);
-            }, i * 400);              // 同侧逐次发射
-        }
+    // 攻击充能特效
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(10, boss.y, 8, {
+        color: '#ADFF2F',
+        size: 3,
+        speed: 2,
+        life: 600,
+        spread: Math.PI / 3
+    });
+    createParticles(canvas.width - 10, boss.y, 8, {
+        color: '#ADFF2F',
+        size: 3,
+        speed: 2,
+        life: 600,
+        spread: Math.PI / 3
     });
 
-    setTimeout(() => { if (boss) boss.attackCooldown = false; }, 1800);
+    setTimeout(() => {
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+        addScreenShake(6, 300);
+
+        sides.forEach(side => {
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    if (!boss || isGamePaused) return;
+                    const b = getBullet();
+                    b.x = side === -1 ? 10 : canvas.width - 10;
+                    b.y = boss.y + boss.height / 2;
+                    b.width = 10;
+                    b.height = 10;
+                    b.dx = side * bulletSpeed;
+                    b.dy = 1.2 * (boss && boss.bulletSpeedFactor || 1);
+                    b.damage = 10;
+                    b.color = '#ADFF2F';   // 黄绿
+                    b.bounceRemaining = 4; // 可弹 4 次
+                    boss.bullets.push(b);
+                }, i * 400);              // 同侧逐次发射
+            }
+        });
+
+        setTimeout(() => { if (boss) boss.attackCooldown = false; }, 1800);
+    }, 500); // 充能0.5秒后开始攻击
 }
 
 // 3) 扩张环：中心发射两圈子弹，第二圈稍后、半径略大
@@ -918,31 +1217,64 @@ function expandingRingAttack() {
     const rings = 2;
     const bulletsPerRing = 18;
     const baseSpeed = 1.6 * (boss && boss.bulletSpeedFactor || 1);
-    boss.attackCooldown = true;
 
-    for (let r = 0; r < rings; r++) {
-        setTimeout(() => {
-            if (!boss || isGamePaused) return;
-            for (let i = 0; i < bulletsPerRing; i++) {
-                const angle = (Math.PI * 2 * i) / bulletsPerRing + (r % 2) * (Math.PI / bulletsPerRing);
-                const s = baseSpeed + r * 0.4 * (boss && boss.bulletSpeedFactor || 1);
-                const b = getBullet();
-                b.x = boss.x;
-                b.y = boss.y + boss.height / 2;
-                b.width = 9;
-                b.height = 9;
-                b.dx = Math.cos(angle) * s;
-                b.dy = Math.sin(angle) * s;
-                b.damage = 9;
-                b.color = '#00BFFF'; // 深天蓝
-                boss.bullets.push(b);
-            }
-        }, r * 500);
-    }
-    setTimeout(() => { if (boss) boss.attackCooldown = false; }, rings * 500 + 400);
+    // 攻击充能特效
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(boss.x, boss.y, 20, {
+        color: '#00BFFF',
+        size: 6,
+        speed: 1.5,
+        life: 800,
+        spread: Math.PI * 2
+    });
+
+    setTimeout(() => {
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+
+        // 攻击开始特效
+        createParticles(boss.x, boss.y, 15, {
+            color: '#00BFFF',
+            size: 8,
+            speed: 4,
+            life: 1000,
+            spread: Math.PI * 2
+        });
+        addScreenShake(7, 400);
+
+        for (let r = 0; r < rings; r++) {
+            setTimeout(() => {
+                if (!boss || isGamePaused) return;
+                for (let i = 0; i < bulletsPerRing; i++) {
+                    const angle = (Math.PI * 2 * i) / bulletsPerRing + (r % 2) * (Math.PI / bulletsPerRing);
+                    const s = baseSpeed + r * 0.4 * (boss && boss.bulletSpeedFactor || 1);
+                    const b = getBullet();
+                    b.x = boss.x;
+                    b.y = boss.y + boss.height / 2;
+                    b.width = 9;
+                    b.height = 9;
+                    b.dx = Math.cos(angle) * s;
+                    b.dy = Math.sin(angle) * s;
+                    b.damage = 9;
+                    b.color = '#00BFFF'; // 深天蓝
+                    b.hasTrail = true; // 添加轨迹效果
+                    boss.bullets.push(b);
+                }
+            }, r * 500);
+        }
+        setTimeout(() => { if (boss) boss.attackCooldown = false; }, rings * 500 + 400);
+    }, 700); // 充能0.7秒后开始攻击
 }
 
 function update() {
+    // 更新特效系统
+    updateParticles();
+    updateScreenShake();
+    updateScreenFlash();
+
     // Boss模式下按总体游玩时间调整攻击间隔（每帧检查）
     updateBossAttackInterval();
     // Boss 生成逻辑
@@ -1048,6 +1380,12 @@ function update() {
 
     // 更新Boss
     if (bossActive && boss) {
+        // 更新Boss特效
+        boss.energyRingRotation += 0.02; // 能量光环旋转
+        if (boss.damageFlashTime > 0) {
+            boss.damageFlashTime -= 16; // 受伤闪烁效果倒计时
+        }
+
         boss.x += boss.speed * boss.dx;
         // Boss 左右边界碰撞检测
         if (boss.x - boss.width / 2 < 0 || boss.x + boss.width / 2 > canvas.width) {
@@ -1065,11 +1403,30 @@ function update() {
                 
                 let damageDealt = player.bulletDamage * 10; // 基础伤害，乘以玩家子弹伤害系数
 
+                // Boss受伤特效
+                boss.damageFlashTime = 200; // 闪烁200ms
+                createParticles(bullet.x, bullet.y, 8, {
+                    color: boss.shield > 0 ? '#00BFFF' : '#FF4500',
+                    size: 3,
+                    speed: 3,
+                    life: 600,
+                    spread: Math.PI
+                });
+
                 if (boss.shield > 0) {
                     boss.shield -= damageDealt;
-                    if (boss.shield < 0) { 
-                        boss.health += boss.shield; 
+                    if (boss.shield < 0) {
+                        boss.health += boss.shield;
                         boss.shield = 0;
+                        // 护盾破碎特效
+                        createParticles(boss.x, boss.y, 25, {
+                            color: '#00BFFF',
+                            size: 5,
+                            speed: 6,
+                            life: 1200,
+                            spread: Math.PI * 2
+                        });
+                        addScreenShake(8, 400);
                     }
                 } else if (boss.health > 0) {
                     boss.health -= damageDealt;
@@ -1090,6 +1447,24 @@ function update() {
                 if (boss.health < 0) boss.health = 0;
 
                 if (boss.health <= 0) {
+                    // Boss死亡爆炸特效
+                    createParticles(boss.x, boss.y, 50, {
+                        color: '#FFD700',
+                        size: 8,
+                        speed: 8,
+                        life: 2000,
+                        spread: Math.PI * 2
+                    });
+                    createParticles(boss.x, boss.y, 30, {
+                        color: '#FF4500',
+                        size: 12,
+                        speed: 6,
+                        life: 1500,
+                        spread: Math.PI * 2
+                    });
+                    addScreenShake(20, 800);
+                    addScreenFlash(0.5, 300);
+
                     let bossKillScore = 500; // Base score for defeating a boss
                     // Adjust score based on which boss and its spawn count (difficulty)
                     if (boss.type === 'boss1') {
@@ -1378,6 +1753,10 @@ function gameOver() {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // 应用屏幕震动
+    ctx.save();
+    ctx.translate(screenShake.x, screenShake.y);
+
     // 绘制玩家
     if (player.image) {
         ctx.drawImage(player.image, player.x - player.width / 2, player.y - player.height / 2, player.width, player.height);
@@ -1433,7 +1812,128 @@ function draw() {
 
     // 绘制Boss
     if (bossActive && boss && boss.image.complete) {
+        // 绘制Boss能量光环
+        if (!boss.isSpawning || Date.now() - boss.spawnTime > boss.spawnDuration) {
+            ctx.save();
+            ctx.translate(boss.x, boss.y);
+
+            const ringColor = boss.type === 'boss1' ? '#FF00FF' : '#00FFFF';
+            const pulseIntensity = 0.3 + 0.2 * Math.sin(Date.now() / 300);
+
+            // 外层光环 - 顺时针旋转
+            ctx.rotate(boss.energyRingRotation);
+            ctx.strokeStyle = ringColor;
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.5 + pulseIntensity;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = ringColor;
+            ctx.beginPath();
+            ctx.arc(0, 0, boss.width / 2 + 25, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 中层光环 - 逆时针旋转
+            ctx.rotate(-boss.energyRingRotation * 3);
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.4 + pulseIntensity * 0.5;
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(0, 0, boss.width / 2 + 15, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 内层光环 - 快速旋转
+            ctx.rotate(boss.energyRingRotation * 4);
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.3 + pulseIntensity * 0.3;
+            ctx.shadowBlur = 5;
+            ctx.beginPath();
+            ctx.arc(0, 0, boss.width / 2 + 8, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // 绘制充能特效
+        if (boss.chargingAttack) {
+            const chargeProgress = (Date.now() - boss.chargeStartTime) / 800;
+            const chargeColor = boss.type === 'boss1' ? '#FF00FF' : '#00FFFF';
+
+            ctx.save();
+
+            // 充能光圈
+            ctx.globalAlpha = 0.3 + 0.3 * Math.sin(Date.now() / 100);
+            ctx.strokeStyle = chargeColor;
+            ctx.lineWidth = 4;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = chargeColor;
+            ctx.beginPath();
+            ctx.arc(boss.x, boss.y, (boss.width / 2 + 30) * chargeProgress, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 内部充能效果
+            ctx.globalAlpha = 0.2 + 0.2 * Math.sin(Date.now() / 80);
+            ctx.fillStyle = chargeColor;
+            ctx.beginPath();
+            ctx.arc(boss.x, boss.y, (boss.width / 3) * chargeProgress, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 充能粒子环 - 性能优化，减少粒子数量
+            const particleCount = Math.floor(chargeProgress * 8); // 减少粒子数量
+            for (let i = 0; i < particleCount; i++) {
+                const angle = (i / particleCount) * Math.PI * 2 + Date.now() / 200;
+                const radius = boss.width / 2 + 20;
+                const px = boss.x + Math.cos(angle) * radius;
+                const py = boss.y + Math.sin(angle) * radius;
+
+                ctx.globalAlpha = 0.6;
+                ctx.fillStyle = chargeColor;
+                ctx.beginPath();
+                ctx.arc(px, py, 2, 0, Math.PI * 2); // 减小粒子大小
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        // Boss出现特效
+        if (boss.isSpawning && Date.now() - boss.spawnTime < boss.spawnDuration) {
+            const spawnProgress = (Date.now() - boss.spawnTime) / boss.spawnDuration;
+            ctx.save();
+            ctx.globalAlpha = spawnProgress;
+            ctx.scale(spawnProgress, spawnProgress);
+            ctx.translate(boss.x * (1 - spawnProgress), boss.y * (1 - spawnProgress));
+        }
+
+        // 受伤特效 - 红色能量波动
+        if (boss.damageFlashTime > 0) {
+            ctx.save();
+            const flashIntensity = boss.damageFlashTime / 200; // 0-1之间的强度
+            const pulseSize = 5 + 10 * Math.sin(Date.now() / 50); // 脉冲大小
+
+            // 红色能量光环
+            ctx.globalAlpha = 0.4 * flashIntensity;
+            ctx.strokeStyle = '#FF4500';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#FF4500';
+
+            // 绘制多层能量环
+            for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                const radius = (boss.width / 2) + pulseSize + (i * 8);
+                ctx.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha *= 0.6; // 每层递减透明度
+            }
+
+            ctx.restore();
+        }
+
         ctx.drawImage(boss.image, boss.x - boss.width / 2, boss.y - boss.height / 2, boss.width, boss.height);
+
+        if (boss.isSpawning && Date.now() - boss.spawnTime < boss.spawnDuration) {
+            ctx.restore();
+        }
+
         // 绘制Boss护盾条
         if (boss.shield > 0) {
             ctx.fillStyle = 'rgba(0, 150, 255, 0.7)'; // 蓝色护盾条
@@ -1450,17 +1950,46 @@ function draw() {
 
         // 绘制Boss子弹 - 根据攻击类型显示不同颜色
         for (let bBullet of boss.bullets) {
+            ctx.save();
+
+            // 子弹轨迹效果 - 性能优化，减少轨迹段数
+            if (bBullet.hasTrail && Math.random() < 0.7) { // 30%概率跳过轨迹绘制
+                ctx.globalAlpha = 0.3;
+                ctx.fillStyle = bBullet.color || 'purple';
+                for (let i = 1; i <= 2; i++) { // 减少到2段轨迹
+                    const trailX = bBullet.x - bBullet.dx * i * 3;
+                    const trailY = bBullet.y - bBullet.dy * i * 3;
+                    const trailSize = (bBullet.width / 3) * (3 - i);
+                    ctx.fillRect(trailX - trailSize / 2, trailY - trailSize / 2, trailSize, trailSize);
+                }
+                ctx.globalAlpha = 1;
+            }
+
             // 使用子弹自身的颜色，如果没有定义则使用默认的紫色
             ctx.fillStyle = bBullet.color || 'purple';
-            ctx.fillRect(bBullet.x - bBullet.width / 2, bBullet.y - bBullet.height / 2, bBullet.width, bBullet.height);
-            
+
             // 对于追踪弹，添加发光效果
             if (bBullet.isHoming) {
-                ctx.shadowBlur = 10;
+                ctx.shadowBlur = 15;
                 ctx.shadowColor = bBullet.color;
-                ctx.fillRect(bBullet.x - bBullet.width / 2, bBullet.y - bBullet.height / 2, bBullet.width, bBullet.height);
-                ctx.shadowBlur = 0; // 重置阴影效果
+                ctx.globalAlpha = 0.8 + 0.2 * Math.sin(Date.now() / 100);
             }
+
+            // 绘制子弹主体
+            ctx.fillRect(bBullet.x - bBullet.width / 2, bBullet.y - bBullet.height / 2, bBullet.width, bBullet.height);
+
+            // 为特殊子弹添加额外效果
+            if (bBullet.bounceRemaining > 0) {
+                // 反弹弹的电光效果
+                ctx.strokeStyle = bBullet.color;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath();
+                ctx.arc(bBullet.x, bBullet.y, bBullet.width / 2 + 3, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
         }
     }
 
@@ -1515,6 +2044,15 @@ function draw() {
     drawPowerUps();
     // 绘制激活的道具状态
     drawActivePowerUpStatus();
+
+    // 恢复变换矩阵（取消屏幕震动）
+    ctx.restore();
+
+    // 绘制粒子效果（不受屏幕震动影响）
+    drawParticles();
+
+    // 绘制屏幕闪白效果（最后绘制，覆盖所有内容）
+    drawScreenFlash();
 }
 
 // --- 道具系统函数 ---
