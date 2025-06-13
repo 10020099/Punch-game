@@ -493,3 +493,29 @@ body::before {
 #cheat-panel button:hover {
     background: linear-gradient(145deg, #FFA500, #FFFF00);
 }
+
+/* Boss关挑战按钮 */
+#boss-start-button {
+    position: absolute;
+    top: calc(50% + 100px); /* 位于开始按钮正下方约100px */
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 26px;
+    font-weight: bold;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(173, 216, 230, 0.8);
+    background: linear-gradient(145deg, #1E90FF, #00BFFF); /* 蓝色系渐变与普通开始按钮区分 */
+    padding: 18px 38px;
+    border-radius: 15px;
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    z-index: 3;
+    animation: bossButtonPulse 2s ease infinite;
+    display: none; /* 初始隐藏，JS 控制显示 */
+}
+
+@keyframes bossButtonPulse {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.08); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}

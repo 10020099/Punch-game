@@ -50,6 +50,17 @@ let totalCurrency = 0; // 玩家总积分（货币）
 let isGamePaused = false;
 let gameLoopRequestId;
 
+// Boss关卡模式标志
+let bossMode = false; // 当为 true 时，只与Boss战斗，不生成普通敌人
+
+// Boss模式参数调整
+const BOSS_MODE_HEALTH_MULTIPLIER = 20;
+const BOSS_MODE_BULLET_SPEED_FACTOR = 0.5; // 子弹速度减半
+// Boss 攻击间隔控制
+const BOSS_MODE_INITIAL_ATTACK_INTERVAL_FACTOR = 1.5; // 初始间隔 = base * 1.5
+const BOSS_MODE_MIN_ATTACK_INTERVAL_FACTOR = 0.6;     // 最低可降至 base * 0.6
+const BOSS_MODE_INTERVAL_DECREMENT_PER_MIN = 0.05;    // 每分钟减少 0.05 的系数
+
 // 作弊码缓冲
 let cheatCodeBuffer = "";
 const CHEAT_EFFECT_DURATION = 20000; // 作弊码效果持续20秒
@@ -681,6 +692,14 @@ function createBoss() {
         // Spawn counts are now incremented on defeat
     }
 
+    // 如果处于 Boss 模式，放大血量
+    if (bossMode) {
+        currentHealth *= BOSS_MODE_HEALTH_MULTIPLIER;
+    }
+
+    const baseAttackInterval = 3000;
+    const initialAttackInterval = baseAttackInterval * (bossMode ? BOSS_MODE_INITIAL_ATTACK_INTERVAL_FACTOR : 1);
+
     boss = {
         type: bossType,
         x: canvas.width / 2,
@@ -696,9 +715,11 @@ function createBoss() {
         dx: Math.random() < 0.5 ? -1 : 1, // 初始移动方向
         bullets: [],
         lastAttackTime: 0,
-        attackInterval: 3000, // ms, Boss攻击间隔延长，因为新攻击方式更强
+        attackInterval: initialAttackInterval,
+        baseAttackInterval: baseAttackInterval,
         currentAttackType: 0, // 0: 螺旋弹幕, 1: 追踪弹, 2: 圆形扩散
-        attackCooldown: false // 攻击冷却状态
+        attackCooldown: false, // 攻击冷却状态
+        bulletSpeedFactor: bossMode ? BOSS_MODE_BULLET_SPEED_FACTOR : 1
     };
     bossActive = true;
     clearInterval(enemyInterval); // 停止生成普通敌人
@@ -712,7 +733,7 @@ function spiralBulletAttack() {
     const bulletCount = 8;  // 每一圈发射的子弹数
     const spiralDuration = 3000;  // 螺旋持续时间(ms)
     const rotationsPerSecond = 0.5;  // 每秒旋转次数
-    const bulletSpeed = 1.5;  // 较慢的子弹速度
+    const bulletSpeed = 1.5 * (boss && boss.bulletSpeedFactor || 1);
     
     let startAngle = 0;
     boss.attackCooldown = true;
@@ -755,7 +776,7 @@ function homingBulletAttack() {
     if (!boss || isGamePaused) return;
     
     const bulletCount = 3;  // 发射3颗追踪弹
-    const bulletSpeed = 1.2;  // 追踪弹的基础速度
+    const bulletSpeed = 1.2 * (boss && boss.bulletSpeedFactor || 1);
     const bulletLifespan = 8000;  // 追踪弹存在时间(ms)
     
     boss.attackCooldown = true;
@@ -793,7 +814,7 @@ function circularBulletAttack() {
     
     const waveCount = 3;  // 发射3波
     const bulletsPerWave = 16;  // 每波16颗子弹
-    const bulletSpeed = 1.8;  // 子弹速度
+    const bulletSpeed = 1.8 * (boss && boss.bulletSpeedFactor || 1);
     
     boss.attackCooldown = true;
     
@@ -836,7 +857,7 @@ function fanSpreadAttack() {
     const waves = 4;           // 扫射 4 轮
     const bulletsPerWave = 5;
     const spread = Math.PI / 4;       // 总扩散角 45°
-    const bulletSpeed = 2.4;
+    const bulletSpeed = 2.4 * (boss && boss.bulletSpeedFactor || 1);
     boss.attackCooldown = true;
 
     for (let w = 0; w < waves; w++) {
@@ -866,7 +887,7 @@ function fanSpreadAttack() {
 function zigzagBounceAttack() {
     if (!boss || isGamePaused) return;
     const sides = [-1, 1];          // 左 / 右 两组
-    const bulletSpeed = 2.2;
+    const bulletSpeed = 2.2 * (boss && boss.bulletSpeedFactor || 1);
     boss.attackCooldown = true;
 
     sides.forEach(side => {
@@ -879,7 +900,7 @@ function zigzagBounceAttack() {
                 b.width = 10;
                 b.height = 10;
                 b.dx = side * bulletSpeed;
-                b.dy = 1.2;
+                b.dy = 1.2 * (boss && boss.bulletSpeedFactor || 1);
                 b.damage = 10;
                 b.color = '#ADFF2F';   // 黄绿
                 b.bounceRemaining = 4; // 可弹 4 次
@@ -896,7 +917,7 @@ function expandingRingAttack() {
     if (!boss || isGamePaused) return;
     const rings = 2;
     const bulletsPerRing = 18;
-    const baseSpeed = 1.6;
+    const baseSpeed = 1.6 * (boss && boss.bulletSpeedFactor || 1);
     boss.attackCooldown = true;
 
     for (let r = 0; r < rings; r++) {
@@ -904,7 +925,7 @@ function expandingRingAttack() {
             if (!boss || isGamePaused) return;
             for (let i = 0; i < bulletsPerRing; i++) {
                 const angle = (Math.PI * 2 * i) / bulletsPerRing + (r % 2) * (Math.PI / bulletsPerRing);
-                const s = baseSpeed + r * 0.4;
+                const s = baseSpeed + r * 0.4 * (boss && boss.bulletSpeedFactor || 1);
                 const b = getBullet();
                 b.x = boss.x;
                 b.y = boss.y + boss.height / 2;
@@ -922,6 +943,8 @@ function expandingRingAttack() {
 }
 
 function update() {
+    // Boss模式下按总体游玩时间调整攻击间隔（每帧检查）
+    updateBossAttackInterval();
     // Boss 生成逻辑
     if (scoreForBossTrigger >= nextBossScore && !bossActive) { // 使用 scoreForBossTrigger 判断
         createBoss();
@@ -1095,7 +1118,14 @@ function update() {
                     nextBossScore += scoreForBoss; 
                     debugLog(`Boss (${defeatedBossType}) 被击败! Next Boss score trigger: ${nextBossScore}. Total score: ${score}, Boss trigger score: ${scoreForBossTrigger}`);
 
-                    startEnemyCreation(); 
+                    if (bossMode) {
+                        // Boss模式：2秒后生成下一只Boss，形成连续Boss战
+                        setTimeout(() => {
+                            if (!isGamePaused) createBoss();
+                        }, 2000);
+                    } else {
+                        startEnemyCreation(); 
+                    }
                     break;
                 }
             }
@@ -1128,6 +1158,8 @@ function update() {
                 }
             }
             boss.lastAttackTime = currentTime;
+            // 根据游戏时间缩短攻击间隔
+            updateBossAttackInterval();
         }
 
         // 更新Boss子弹
@@ -1862,6 +1894,7 @@ function restartGame() {
     isGamePaused = false;
     startEnemyCreation();
     gameLoopRequestId = requestAnimationFrame(gameLoop);
+    bossMode = false; // 重置为普通模式
 }
 
 // 绑定开始和重新开始按钮事件
@@ -1870,6 +1903,7 @@ if (startButton) {
     startButton.style.display = 'block';
     startButton.addEventListener('click', () => {
         startButton.style.display = 'none';
+        if (bossStartButton) bossStartButton.style.display = 'none';
         restartGame();
     });
 }
@@ -1889,4 +1923,37 @@ function clearEnemiesArray() {
 function clearPowerUpsArray() {
     for (const p of powerUps) releasePowerUpObj(p);
     powerUps.length = 0;
+}
+
+// Boss模式启动函数
+function startBossMode() {
+    document.getElementById('game-over').style.display = 'none';
+    bossMode = true;
+    bossModeStartTime = Date.now(); // 记录模式开始时间
+    initializeGame();
+    isGamePaused = false;
+    clearInterval(enemyInterval); // 确保不会生成普通敌人
+    createBoss(); // 立即生成Boss
+    gameLoopRequestId = requestAnimationFrame(gameLoop);
+}
+
+// 绑定Boss关按钮事件
+const bossStartButton = document.getElementById('boss-start-button');
+if (bossStartButton) {
+    bossStartButton.style.display = 'block';
+    bossStartButton.addEventListener('click', () => {
+        // 隐藏两个开始按钮，避免重复点击
+        if (startButton) startButton.style.display = 'none';
+        bossStartButton.style.display = 'none';
+        startBossMode();
+    });
+}
+
+// 根据游玩时长更新 Boss 攻击间隔
+function updateBossAttackInterval() {
+    if (!bossMode || !boss) return;
+    const elapsedMin = Math.floor((Date.now() - bossModeStartTime) / 60000);
+    const factorReduction = elapsedMin * BOSS_MODE_INTERVAL_DECREMENT_PER_MIN;
+    const factor = Math.max(BOSS_MODE_MIN_ATTACK_INTERVAL_FACTOR, BOSS_MODE_INITIAL_ATTACK_INTERVAL_FACTOR - factorReduction);
+    boss.attackInterval = boss.baseAttackInterval * factor;
 }
