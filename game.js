@@ -316,6 +316,7 @@ const baseBossShield = 100; // Boss基础护盾
 const baseBossHealth = 200; // Boss基础血量
 let bossSpawnCount = 0; // Boss出现次数计数器
 let boss2SpawnCount = 0; // Boss 2出现次数计数器
+let boss3SpawnCount = 0; // Boss 3出现次数计数器
 
 let backgroundIndex = 1;
 let backgroundChangeThreshold = 100; // 移动距离阈值，用于切换背景
@@ -343,6 +344,13 @@ bossImage.src = 'assets/images/boss.png'; // 确保boss图片路径正确
 // 加载Boss图片2
 const bossImage2 = new Image();
 bossImage2.src = 'assets/images/boss 2.png';
+
+// 加载Boss图片3 - 地狱主题
+const bossImage3 = new Image();
+bossImage3.src = 'assets/images/boss 3.png';
+bossImage3.onload = function() {
+    debugLog('Boss 3 图像加载完成');
+};
 
 // 加载黄金战机图片
 const goldenFighterImage = new Image();
@@ -395,6 +403,15 @@ function initializeGame() {
         boss2SpawnCount = 0; // Default if not found
     }
     debugLog(`Loaded Boss 2 defeat count: ${boss2SpawnCount}`);
+
+    // Load Boss 3 defeat count
+    const savedBoss3SpawnCount = localStorage.getItem('boss3SpawnCount');
+    if (savedBoss3SpawnCount !== null) {
+        boss3SpawnCount = parseInt(savedBoss3SpawnCount, 10) || 0;
+    } else {
+        boss3SpawnCount = 0; // Default if not found
+    }
+    debugLog(`Loaded Boss 3 defeat count: ${boss3SpawnCount}`);
 
     // 加载黄金飞机拥有状态
     const savedHasGoldenFighter = localStorage.getItem('hasGoldenFighter');
@@ -813,19 +830,30 @@ function createBoss() {
     const bossWidth = 200;
     const bossHeight = 150;
 
-    if (Math.random() < 0.5) {
-        // Boss 2
-        bossType = 'boss2';
-        currentShield = (baseBossShield * (1 + 0.1 * boss2SpawnCount)) * 2; // Use boss2SpawnCount
-        currentHealth = (baseBossHealth * (1 + 0.1 * boss2SpawnCount)) * 2; // Use boss2SpawnCount
-        bossImg = bossImage2;
-    } else {
+    const randomValue = Math.random();
+    debugLog(`Boss选择随机值: ${randomValue}`);
+
+    if (randomValue < 0.33) {
         // Boss 1 (Original)
         bossType = 'boss1';
         currentShield = baseBossShield * (1 + 0.1 * bossSpawnCount);
         currentHealth = baseBossHealth * (1 + 0.1 * bossSpawnCount);
         bossImg = bossImage;
-        // Spawn counts are now incremented on defeat
+        debugLog('选择了Boss 1');
+    } else if (randomValue < 0.66) {
+        // Boss 2
+        bossType = 'boss2';
+        currentShield = (baseBossShield * (1 + 0.1 * boss2SpawnCount)) * 2;
+        currentHealth = (baseBossHealth * (1 + 0.1 * boss2SpawnCount)) * 2;
+        bossImg = bossImage2;
+        debugLog('选择了Boss 2');
+    } else {
+        // Boss 3 - 地狱主题
+        bossType = 'boss3';
+        currentShield = (baseBossShield * (1 + 0.1 * boss3SpawnCount)) * 2.5; // 更强的护盾
+        currentHealth = (baseBossHealth * (1 + 0.1 * boss3SpawnCount)) * 2.5; // 更强的血量
+        bossImg = bossImage3;
+        debugLog('选择了Boss 3 - 地狱主题');
     }
 
     // 如果处于 Boss 模式，放大血量
@@ -871,18 +899,36 @@ function createBoss() {
     // Boss出现特效
     createBossSpawnEffects();
 
-    debugLog(`Boss (${boss.type})出现了! 第 ${boss.type === 'boss1' ? bossSpawnCount : boss2SpawnCount} 次 (scaling based on previous defeats). 护盾: ${boss.shield}, 血量: ${boss.health}`);
+    let spawnCountForLog;
+    if (boss.type === 'boss1') {
+        spawnCountForLog = bossSpawnCount;
+    } else if (boss.type === 'boss2') {
+        spawnCountForLog = boss2SpawnCount;
+    } else if (boss.type === 'boss3') {
+        spawnCountForLog = boss3SpawnCount;
+    }
+    debugLog(`Boss (${boss.type})出现了! 第 ${spawnCountForLog} 次 (scaling based on previous defeats). 护盾: ${boss.shield}, 血量: ${boss.health}`);
 }
 
 // Boss出现特效
 function createBossSpawnEffects() {
-    // 屏幕震动
-    addScreenShake(15, 1000);
+    // 屏幕震动 - Boss3更强烈
+    const shakeIntensity = boss.type === 'boss3' ? 20 : 15;
+    addScreenShake(shakeIntensity, 1000);
 
     // 传送门粒子效果
-    createParticles(boss.x, boss.y, 50, {
-        color: boss.type === 'boss1' ? '#FF00FF' : '#00FFFF',
-        size: 8,
+    let portalColor;
+    if (boss.type === 'boss1') {
+        portalColor = '#FF00FF';
+    } else if (boss.type === 'boss2') {
+        portalColor = '#00FFFF';
+    } else if (boss.type === 'boss3') {
+        portalColor = '#FF4500'; // 地狱橙红色
+    }
+
+    createParticles(boss.x, boss.y, boss.type === 'boss3' ? 60 : 50, {
+        color: portalColor,
+        size: boss.type === 'boss3' ? 10 : 8,
         speed: 5,
         life: 2000,
         spread: Math.PI * 2
@@ -890,14 +936,15 @@ function createBossSpawnEffects() {
 
     // 能量爆发效果
     setTimeout(() => {
-        createParticles(boss.x, boss.y, 30, {
-            color: '#FFD700',
-            size: 12,
+        const burstColor = boss.type === 'boss3' ? '#DC143C' : '#FFD700'; // 地狱深红色
+        createParticles(boss.x, boss.y, boss.type === 'boss3' ? 40 : 30, {
+            color: burstColor,
+            size: boss.type === 'boss3' ? 15 : 12,
             speed: 8,
             life: 1500,
             spread: Math.PI * 2
         });
-        addScreenFlash(0.3, 200);
+        addScreenFlash(boss.type === 'boss3' ? 0.4 : 0.3, 200);
     }, 500);
 }
 
@@ -1269,6 +1316,287 @@ function expandingRingAttack() {
     }, 700); // 充能0.7秒后开始攻击
 }
 
+// ---------------------------------------------------------------------------
+// Boss 3 专属攻击模组 - 地狱主题
+// ---------------------------------------------------------------------------
+
+// 1) 地狱火雨：从天而降的火球攻击，具有燃烧轨迹和爆炸效果
+function hellFireRainAttack() {
+    if (!boss || isGamePaused) return;
+
+    const meteorCount = 8; // 火球数量
+    const rainDuration = 4000; // 攻击持续时间
+    const bulletSpeed = 2.0 * (boss && boss.bulletSpeedFactor || 1);
+
+    // 攻击充能特效 - 地狱主题
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    createParticles(boss.x, boss.y, 25, {
+        color: '#FF4500',
+        size: 6,
+        speed: 3,
+        life: 1000,
+        spread: Math.PI * 2
+    });
+
+    // 地狱传送门特效
+    createParticles(boss.x, boss.y, 15, {
+        color: '#DC143C',
+        size: 8,
+        speed: 2,
+        life: 1200,
+        spread: Math.PI * 2
+    });
+
+    setTimeout(() => {
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+        addScreenShake(8, 500);
+
+        // 地狱火雨开始特效
+        createParticles(boss.x, boss.y, 20, {
+            color: '#FF6347',
+            size: 10,
+            speed: 5,
+            life: 1000,
+            spread: Math.PI * 2
+        });
+
+        // 分批发射火球
+        for (let wave = 0; wave < 4; wave++) {
+            setTimeout(() => {
+                if (!boss || isGamePaused) return;
+
+                for (let i = 0; i < meteorCount / 4; i++) {
+                    const startX = Math.random() * canvas.width;
+                    const startY = -50;
+                    const targetX = Math.random() * canvas.width;
+                    const targetY = canvas.height + 50;
+
+                    // 计算火球轨迹
+                    const dx = targetX - startX;
+                    const dy = targetY - startY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const normalizedDx = (dx / distance) * bulletSpeed;
+                    const normalizedDy = (dy / distance) * bulletSpeed;
+
+                    const fireball = getBullet();
+                    fireball.x = startX;
+                    fireball.y = startY;
+                    fireball.width = 16;
+                    fireball.height = 16;
+                    fireball.dx = normalizedDx;
+                    fireball.dy = normalizedDy;
+                    fireball.damage = 18;
+                    fireball.color = '#FF4500';
+                    fireball.isFireball = true; // 标记为火球
+                    fireball.hasTrail = true;
+                    fireball.trailColor = '#FF6347';
+                    fireball.creationTime = Date.now();
+
+                    boss.bullets.push(fireball);
+                }
+            }, wave * 800); // 每0.8秒一波
+        }
+
+        setTimeout(() => { if (boss) boss.attackCooldown = false; }, rainDuration);
+    }, 1000); // 充能1秒后开始攻击
+}
+
+// 2) 恶魔之眼激光：跟踪玩家的激光束攻击
+function demonEyeLaserAttack() {
+    if (!boss || isGamePaused) return;
+
+    const laserDuration = 3000; // 激光持续时间
+    const laserWidth = 30; // 激光宽度
+    const chargeDuration = 1500; // 充能时间
+
+    // 攻击充能特效 - 恶魔之眼主题
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    boss.laserTarget = { x: player.x, y: player.y }; // 锁定目标位置
+
+    // 恶魔之眼充能特效
+    createParticles(boss.x, boss.y, 20, {
+        color: '#8B0000',
+        size: 4,
+        speed: 1,
+        life: 1500,
+        spread: Math.PI / 3
+    });
+
+    setTimeout(() => {
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+        addScreenShake(6, 300);
+
+        // 激光发射特效
+        createParticles(boss.x, boss.y, 15, {
+            color: '#DC143C',
+            size: 8,
+            speed: 4,
+            life: 800,
+            spread: Math.PI / 4
+        });
+
+        // 创建激光束
+        const laserStartTime = Date.now();
+        const laserInterval = setInterval(() => {
+            if (!boss || isGamePaused || Date.now() - laserStartTime > laserDuration) {
+                clearInterval(laserInterval);
+                return;
+            }
+
+            // 激光逐渐跟踪玩家
+            const trackingFactor = 0.02; // 跟踪强度
+            boss.laserTarget.x += (player.x - boss.laserTarget.x) * trackingFactor;
+            boss.laserTarget.y += (player.y - boss.laserTarget.y) * trackingFactor;
+
+            // 创建激光段
+            const dx = boss.laserTarget.x - boss.x;
+            const dy = boss.laserTarget.y - boss.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const segments = Math.floor(distance / 20); // 每20像素一段
+
+            for (let i = 0; i < segments; i++) {
+                const segmentX = boss.x + (dx / segments) * i;
+                const segmentY = boss.y + (dy / segments) * i;
+
+                const laserSegment = getBullet();
+                laserSegment.x = segmentX;
+                laserSegment.y = segmentY;
+                laserSegment.width = laserWidth;
+                laserSegment.height = 20;
+                laserSegment.dx = 0;
+                laserSegment.dy = 0;
+                laserSegment.damage = 12;
+                laserSegment.color = '#DC143C';
+                laserSegment.isLaser = true; // 标记为激光
+                laserSegment.laserLife = 200; // 激光段生命周期
+                laserSegment.creationTime = Date.now();
+
+                boss.bullets.push(laserSegment);
+            }
+        }, 100); // 每100ms更新激光
+
+        setTimeout(() => { if (boss) boss.attackCooldown = false; }, laserDuration + 500);
+    }, chargeDuration);
+}
+
+// 3) 炼狱漩涡：旋转的能量漩涡，吸引玩家并发射螺旋火焰弹
+function infernalVortexAttack() {
+    if (!boss || isGamePaused) return;
+
+    const vortexDuration = 5000; // 漩涡持续时间
+    const spiralBullets = 12; // 每圈螺旋弹数量
+    const bulletSpeed = 1.8 * (boss && boss.bulletSpeedFactor || 1);
+
+    // 攻击充能特效 - 炼狱漩涡主题
+    boss.chargingAttack = true;
+    boss.chargeStartTime = Date.now();
+    boss.vortexRotation = 0; // 漩涡旋转角度
+
+    // 炼狱漩涡充能特效
+    createParticles(boss.x, boss.y, 30, {
+        color: '#B22222',
+        size: 5,
+        speed: 2,
+        life: 1200,
+        spread: Math.PI * 2
+    });
+
+    // 扭曲视觉效果
+    createParticles(boss.x, boss.y, 20, {
+        color: '#8B0000',
+        size: 8,
+        speed: 1,
+        life: 1500,
+        spread: Math.PI * 2
+    });
+
+    setTimeout(() => {
+        if (!boss || isGamePaused) return;
+
+        boss.attackCooldown = true;
+        boss.chargingAttack = false;
+        addScreenShake(10, 800);
+
+        // 漩涡开始特效
+        createParticles(boss.x, boss.y, 25, {
+            color: '#FF4500',
+            size: 12,
+            speed: 6,
+            life: 1000,
+            spread: Math.PI * 2
+        });
+
+        const vortexStartTime = Date.now();
+        const vortexInterval = setInterval(() => {
+            if (!boss || isGamePaused || Date.now() - vortexStartTime > vortexDuration) {
+                clearInterval(vortexInterval);
+                return;
+            }
+
+            boss.vortexRotation += 0.3; // 漩涡旋转速度
+
+            // 发射螺旋火焰弹
+            for (let i = 0; i < spiralBullets; i++) {
+                const angle = boss.vortexRotation + (Math.PI * 2 * i / spiralBullets);
+                const radius = 80 + 30 * Math.sin(Date.now() / 500); // 脉动半径
+
+                const startX = boss.x + Math.cos(angle) * radius;
+                const startY = boss.y + Math.sin(angle) * radius;
+
+                // 螺旋向外发射
+                const vx = Math.cos(angle) * bulletSpeed;
+                const vy = Math.sin(angle) * bulletSpeed;
+
+                const vortexBullet = getBullet();
+                vortexBullet.x = startX;
+                vortexBullet.y = startY;
+                vortexBullet.width = 12;
+                vortexBullet.height = 12;
+                vortexBullet.dx = vx;
+                vortexBullet.dy = vy;
+                vortexBullet.damage = 15;
+                vortexBullet.color = '#FF6347';
+                vortexBullet.isVortexBullet = true; // 标记为漩涡弹
+                vortexBullet.hasTrail = true;
+                vortexBullet.trailColor = '#B22222';
+                vortexBullet.creationTime = Date.now();
+
+                boss.bullets.push(vortexBullet);
+            }
+
+            // 漩涡吸引效果 - 轻微拉拽玩家
+            const pullStrength = 0.5;
+            const dx = boss.x - player.x;
+            const dy = boss.y - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0 && distance < 300) { // 吸引范围
+                const pullX = (dx / distance) * pullStrength;
+                const pullY = (dy / distance) * pullStrength;
+
+                // 轻微拉拽玩家（如果在范围内）
+                if (player.x + pullX > player.width / 2 && player.x + pullX < canvas.width - player.width / 2) {
+                    player.x += pullX;
+                }
+                if (player.y + pullY > player.height / 2 && player.y + pullY < canvas.height - player.height / 2) {
+                    player.y += pullY;
+                }
+            }
+
+        }, 300); // 每300ms发射一轮
+
+        setTimeout(() => { if (boss) boss.attackCooldown = false; }, vortexDuration + 1000);
+    }, 1200); // 充能1.2秒后开始攻击
+}
+
 function update() {
     // 更新特效系统
     updateParticles();
@@ -1471,6 +1799,8 @@ function update() {
                         bossKillScore += (bossSpawnCount) * 100; // bossSpawnCount already reflects current encounter's level due to createBoss logic
                     } else if (boss.type === 'boss2') {
                         bossKillScore += (boss2SpawnCount) * 150; // Boss 2 might be worth more
+                    } else if (boss.type === 'boss3') {
+                        bossKillScore += (boss3SpawnCount) * 200; // Boss 3 地狱主题，价值最高
                     }
 
                     if (player.isScoreMultiplierActive) bossKillScore *= 2;
@@ -1488,6 +1818,9 @@ function update() {
                     } else if (defeatedBossType === 'boss2') {
                         boss2SpawnCount++;
                         debugLog(`Boss 2 defeated. Boss 2 appearance count for next scaling: ${boss2SpawnCount}`);
+                    } else if (defeatedBossType === 'boss3') {
+                        boss3SpawnCount++;
+                        debugLog(`Boss 3 defeated. Boss 3 appearance count for next scaling: ${boss3SpawnCount}`);
                     }
                     
                     nextBossScore += scoreForBoss; 
@@ -1531,6 +1864,12 @@ function update() {
                     case 1: zigzagBounceAttack(); break;
                     case 2: expandingRingAttack(); break;
                 }
+            } else if (boss.type === 'boss3') {
+                switch (boss.currentAttackType) {
+                    case 0: hellFireRainAttack(); break;
+                    case 1: demonEyeLaserAttack(); break;
+                    case 2: infernalVortexAttack(); break;
+                }
             }
             boss.lastAttackTime = currentTime;
             // 根据游戏时间缩短攻击间隔
@@ -1567,7 +1906,38 @@ function update() {
                         bBullet.dy = (bBullet.dy / speed) * 1.8;
                     }
                 }
-                
+
+                // Boss3 特殊子弹处理
+                if (bBullet.isFireball) {
+                    // 火球接触地面时爆炸
+                    if (bBullet.y >= canvas.height - 20) {
+                        // 创建爆炸特效
+                        createParticles(bBullet.x, bBullet.y, 15, {
+                            color: '#FF4500',
+                            size: 8,
+                            speed: 4,
+                            life: 800,
+                            spread: Math.PI * 2
+                        });
+                        boss.bullets.splice(i, 1);
+                        releaseBullet(bBullet);
+                        continue;
+                    }
+                } else if (bBullet.isLaser) {
+                    // 激光段生命周期管理
+                    if (Date.now() - bBullet.creationTime > bBullet.laserLife) {
+                        boss.bullets.splice(i, 1);
+                        releaseBullet(bBullet);
+                        continue;
+                    }
+                } else if (bBullet.isVortexBullet) {
+                    // 漩涡弹特殊效果 - 轻微弯曲轨迹
+                    const time = (Date.now() - bBullet.creationTime) / 1000;
+                    const curveFactor = 0.3;
+                    bBullet.dx += Math.sin(time * 3) * curveFactor;
+                    bBullet.dy += Math.cos(time * 3) * curveFactor;
+                }
+
                 // 更新子弹位置
                 bBullet.x += bBullet.dx;
                 bBullet.y += bBullet.dy;
@@ -1704,6 +2074,8 @@ function gameOver() {
     debugLog(`Saved Boss 1 defeat count: ${bossSpawnCount}`);
     localStorage.setItem('boss2SpawnCount', boss2SpawnCount);
     debugLog(`Saved Boss 2 defeat count: ${boss2SpawnCount}`);
+    localStorage.setItem('boss3SpawnCount', boss3SpawnCount);
+    debugLog(`Saved Boss 3 defeat count: ${boss3SpawnCount}`);
 
     // alert(`游戏结束！\n本局得分: ${score}\n获得积分: ${earnedCurrency}\n总积分: ${totalCurrency}`);
     document.getElementById('final-score-display').textContent = score;
@@ -1811,14 +2183,50 @@ function draw() {
     }
 
     // 绘制Boss
-    if (bossActive && boss && boss.image.complete) {
+    if (bossActive && boss) {
         // 绘制Boss能量光环
         if (!boss.isSpawning || Date.now() - boss.spawnTime > boss.spawnDuration) {
             ctx.save();
             ctx.translate(boss.x, boss.y);
 
-            const ringColor = boss.type === 'boss1' ? '#FF00FF' : '#00FFFF';
+            let ringColor;
+            if (boss.type === 'boss1') {
+                ringColor = '#FF00FF'; // 粉紫色
+            } else if (boss.type === 'boss2') {
+                ringColor = '#00FFFF'; // 青色
+            } else if (boss.type === 'boss3') {
+                ringColor = '#FF4500'; // 地狱橙红色
+            }
             const pulseIntensity = 0.3 + 0.2 * Math.sin(Date.now() / 300);
+
+            // Boss3 地狱主题特效 - 额外的熔岩光环
+            if (boss.type === 'boss3') {
+                // 熔岩脉动效果
+                const lavaIntensity = 0.4 + 0.3 * Math.sin(Date.now() / 200);
+                ctx.strokeStyle = '#DC143C';
+                ctx.lineWidth = 4;
+                ctx.globalAlpha = lavaIntensity;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#DC143C';
+                ctx.beginPath();
+                ctx.arc(0, 0, boss.width / 2 + 35 + 10 * Math.sin(Date.now() / 400), 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 地狱火焰粒子环
+                const flameParticles = 8;
+                for (let i = 0; i < flameParticles; i++) {
+                    const angle = (i / flameParticles) * Math.PI * 2 + Date.now() / 300;
+                    const radius = boss.width / 2 + 40;
+                    const px = Math.cos(angle) * radius;
+                    const py = Math.sin(angle) * radius;
+
+                    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(Date.now() / 150 + i);
+                    ctx.fillStyle = i % 2 === 0 ? '#FF4500' : '#B22222';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 3 + Math.sin(Date.now() / 100 + i) * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
 
             // 外层光环 - 顺时针旋转
             ctx.rotate(boss.energyRingRotation);
@@ -1855,9 +2263,48 @@ function draw() {
         // 绘制充能特效
         if (boss.chargingAttack) {
             const chargeProgress = (Date.now() - boss.chargeStartTime) / 800;
-            const chargeColor = boss.type === 'boss1' ? '#FF00FF' : '#00FFFF';
+            let chargeColor;
+            if (boss.type === 'boss1') {
+                chargeColor = '#FF00FF'; // 粉紫色
+            } else if (boss.type === 'boss2') {
+                chargeColor = '#00FFFF'; // 青色
+            } else if (boss.type === 'boss3') {
+                chargeColor = '#DC143C'; // 地狱深红色
+            }
 
             ctx.save();
+
+            // Boss3 地狱主题充能特效
+            if (boss.type === 'boss3') {
+                // 地狱传送门效果
+                const portalProgress = chargeProgress;
+                ctx.globalAlpha = 0.4 + 0.2 * Math.sin(Date.now() / 80);
+                ctx.strokeStyle = '#8B0000';
+                ctx.lineWidth = 6;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#8B0000';
+                ctx.beginPath();
+                ctx.arc(boss.x, boss.y, (boss.width / 2 + 50) * portalProgress, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 地狱火焰螺旋
+                const spiralTurns = 3;
+                const spiralPoints = 20;
+                ctx.strokeStyle = '#FF6347';
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath();
+                for (let i = 0; i < spiralPoints; i++) {
+                    const t = i / spiralPoints;
+                    const angle = t * spiralTurns * Math.PI * 2 + Date.now() / 200;
+                    const radius = (boss.width / 2 + 20) * t * portalProgress;
+                    const x = boss.x + Math.cos(angle) * radius;
+                    const y = boss.y + Math.sin(angle) * radius;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
 
             // 充能光圈
             ctx.globalAlpha = 0.3 + 0.3 * Math.sin(Date.now() / 100);
@@ -1909,26 +2356,84 @@ function draw() {
             const flashIntensity = boss.damageFlashTime / 200; // 0-1之间的强度
             const pulseSize = 5 + 10 * Math.sin(Date.now() / 50); // 脉冲大小
 
-            // 红色能量光环
-            ctx.globalAlpha = 0.4 * flashIntensity;
-            ctx.strokeStyle = '#FF4500';
-            ctx.lineWidth = 2;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#FF4500';
+            if (boss.type === 'boss3') {
+                // Boss3 地狱主题受伤特效
+                ctx.globalAlpha = 0.5 * flashIntensity;
+                ctx.strokeStyle = '#8B0000';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#8B0000';
 
-            // 绘制多层能量环
-            for (let i = 0; i < 3; i++) {
-                ctx.beginPath();
-                const radius = (boss.width / 2) + pulseSize + (i * 8);
-                ctx.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.globalAlpha *= 0.6; // 每层递减透明度
+                // 地狱火焰爆发环
+                for (let i = 0; i < 4; i++) {
+                    ctx.beginPath();
+                    const radius = (boss.width / 2) + pulseSize + (i * 12);
+                    ctx.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.globalAlpha *= 0.7;
+                }
+
+                // 地狱火焰粒子爆发
+                const burstParticles = 12;
+                for (let i = 0; i < burstParticles; i++) {
+                    const angle = (i / burstParticles) * Math.PI * 2;
+                    const distance = pulseSize * 2;
+                    const px = boss.x + Math.cos(angle) * distance;
+                    const py = boss.y + Math.sin(angle) * distance;
+
+                    ctx.globalAlpha = 0.6 * flashIntensity;
+                    ctx.fillStyle = i % 2 === 0 ? '#FF4500' : '#DC143C';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else {
+                // 其他Boss的普通受伤特效
+                ctx.globalAlpha = 0.4 * flashIntensity;
+                ctx.strokeStyle = '#FF4500';
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#FF4500';
+
+                // 绘制多层能量环
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    const radius = (boss.width / 2) + pulseSize + (i * 8);
+                    ctx.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.globalAlpha *= 0.6; // 每层递减透明度
+                }
             }
 
             ctx.restore();
         }
 
-        ctx.drawImage(boss.image, boss.x - boss.width / 2, boss.y - boss.height / 2, boss.width, boss.height);
+        // 绘制Boss图像，如果图像未加载完成则使用备用绘制
+        if (boss.image && boss.image.complete) {
+            ctx.drawImage(boss.image, boss.x - boss.width / 2, boss.y - boss.height / 2, boss.width, boss.height);
+        } else {
+            // 备用绘制 - 使用颜色矩形表示Boss
+            ctx.save();
+            let bossColor;
+            if (boss.type === 'boss1') {
+                bossColor = '#FF00FF';
+            } else if (boss.type === 'boss2') {
+                bossColor = '#00FFFF';
+            } else if (boss.type === 'boss3') {
+                bossColor = '#FF4500';
+            }
+            ctx.fillStyle = bossColor;
+            ctx.globalAlpha = 0.8;
+            ctx.fillRect(boss.x - boss.width / 2, boss.y - boss.height / 2, boss.width, boss.height);
+
+            // 添加Boss类型标识
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'center';
+            ctx.globalAlpha = 1;
+            ctx.fillText(boss.type.toUpperCase(), boss.x, boss.y);
+            ctx.restore();
+        }
 
         if (boss.isSpawning && Date.now() - boss.spawnTime < boss.spawnDuration) {
             ctx.restore();
@@ -1976,7 +2481,47 @@ function draw() {
             }
 
             // 绘制子弹主体
-            ctx.fillRect(bBullet.x - bBullet.width / 2, bBullet.y - bBullet.height / 2, bBullet.width, bBullet.height);
+            if (bBullet.isFireball) {
+                // 火球特殊绘制 - 圆形带火焰效果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#FF4500';
+                ctx.globalAlpha = 0.9;
+                ctx.beginPath();
+                ctx.arc(bBullet.x, bBullet.y, bBullet.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 内部火焰核心
+                ctx.fillStyle = '#FFD700';
+                ctx.globalAlpha = 0.7;
+                ctx.beginPath();
+                ctx.arc(bBullet.x, bBullet.y, bBullet.width / 3, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (bBullet.isLaser) {
+                // 激光段特殊绘制 - 发光矩形
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = bBullet.color;
+                ctx.globalAlpha = 0.8;
+                ctx.fillRect(bBullet.x - bBullet.width / 2, bBullet.y - bBullet.height / 2, bBullet.width, bBullet.height);
+            } else if (bBullet.isVortexBullet) {
+                // 漩涡弹特殊绘制 - 旋转的菱形
+                ctx.save();
+                ctx.translate(bBullet.x, bBullet.y);
+                ctx.rotate((Date.now() - bBullet.creationTime) / 200);
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = bBullet.color;
+                ctx.globalAlpha = 0.9;
+                ctx.beginPath();
+                ctx.moveTo(0, -bBullet.height / 2);
+                ctx.lineTo(bBullet.width / 2, 0);
+                ctx.lineTo(0, bBullet.height / 2);
+                ctx.lineTo(-bBullet.width / 2, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            } else {
+                // 普通子弹绘制
+                ctx.fillRect(bBullet.x - bBullet.width / 2, bBullet.y - bBullet.height / 2, bBullet.width, bBullet.height);
+            }
 
             // 为特殊子弹添加额外效果
             if (bBullet.bounceRemaining > 0) {
