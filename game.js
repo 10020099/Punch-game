@@ -337,6 +337,10 @@ enemyImage.src = 'assets/images/enemy fighter.png';
 const enemyImage2 = new Image();
 enemyImage2.src = 'assets/images/enemy fighter 2.png';
 
+// 加载第三种敌方战机图片
+const enemyImage3 = new Image();
+enemyImage3.src = 'assets/images/enemy fighter 3.png';
+
 // 加载Boss图片
 const bossImage = new Image();
 bossImage.src = 'assets/images/boss.png'; // 确保boss图片路径正确
@@ -798,24 +802,37 @@ function updateGameUIDisplays() {
 // 创建敌方战机
 function createEnemy() {
     if (!bossActive) { // 只有在没有Boss时才创建普通敌人
-        const isStrongerEnemy = Math.random() < 0.5; // 50% chance for a stronger enemy
+        const randomValue = Math.random();
         let newEnemy = getEnemy();                // 使用对象池
         Object.assign(newEnemy, {
             x: Math.random() * (canvas.width - 50), // 减去敌人宽度，防止出界
             y: -50, // 从画布外生成
             width: 50,
             height: 50,
-            speed: 1.0
+            speed: 1.0,
+            zigzagDirection: 1, // 用于第三种敌人的Z字形移动
+            zigzagCounter: 0    // Z字形移动计数器
         });
 
-        if (isStrongerEnemy) {
+        if (randomValue < 0.5) {
+            // 基础战机 - 50% 概率
+            newEnemy.image = enemyImage;
+            newEnemy.health = 1;
+            newEnemy.type = 'fighter1';
+            newEnemy.speed = 1.0;
+        } else if (randomValue < 0.8) {
+            // 强化战机 - 30% 概率  
             newEnemy.image = enemyImage2;
             newEnemy.health = 2;
             newEnemy.type = 'fighter2';
+            newEnemy.speed = 1.2;
         } else {
-            newEnemy.image = enemyImage;
-            newEnemy.health = 1; // Explicitly set health for normal enemy
-            newEnemy.type = 'fighter1';
+            // 精英战机 - 20% 概率
+            newEnemy.image = enemyImage3;
+            newEnemy.health = 3;
+            newEnemy.type = 'fighter3';
+            newEnemy.speed = 1.5;
+            newEnemy.hasSpecialMovement = true; // 特殊的Z字形移动模式
         }
         enemies.push(newEnemy);
     }
@@ -1698,7 +1715,31 @@ function update() {
     if (!bossActive) {
         for (let i = enemies.length - 1; i >= 0; i--) {
             let enemy = enemies[i];
-            enemy.y += enemy.speed;
+            
+            // 第三种敌人的特殊Z字形移动
+            if (enemy.type === 'fighter3' && enemy.hasSpecialMovement) {
+                enemy.zigzagCounter++;
+                // 每30帧改变一次水平方向
+                if (enemy.zigzagCounter % 30 === 0) {
+                    enemy.zigzagDirection *= -1;
+                }
+                // Z字形移动：水平移动 + 垂直移动
+                enemy.x += enemy.zigzagDirection * 2;
+                enemy.y += enemy.speed;
+                
+                // 确保敌人不会移出屏幕边界
+                if (enemy.x < 0) {
+                    enemy.x = 0;
+                    enemy.zigzagDirection = 1;
+                } else if (enemy.x > canvas.width - enemy.width) {
+                    enemy.x = canvas.width - enemy.width;
+                    enemy.zigzagDirection = -1;
+                }
+            } else {
+                // 普通敌人垂直向下移动
+                enemy.y += enemy.speed;
+            }
+            
             if (enemy.y > canvas.height) {
                 releaseEnemy(enemy);
                 enemies.splice(i, 1);
@@ -1991,7 +2032,15 @@ function update() {
                     if (enemy.health <= 0) {
                         releaseEnemy(enemy);
                         enemies.splice(i, 1);
-                        let enemyKillScore = (enemy.type === 'fighter2') ? 20 : 10; // More points for stronger enemy
+                        // 根据敌人类型设置不同的分数奖励
+                        let enemyKillScore;
+                        if (enemy.type === 'fighter3') {
+                            enemyKillScore = 30; // 精英战机分数最高
+                        } else if (enemy.type === 'fighter2') {
+                            enemyKillScore = 20; // 强化战机中等分数
+                        } else {
+                            enemyKillScore = 10; // 基础战机分数最低
+                        }
                         if (player.isScoreMultiplierActive) enemyKillScore *= 2;
                         score += enemyKillScore;  // 总分增加
                         scoreForBossTrigger += enemyKillScore; // Boss触发分也增加
@@ -2030,7 +2079,16 @@ function update() {
                 player.y + player.height > enemy.y) {
                 releaseEnemy(enemy);
                 enemies.splice(i, 1);
-                handlePlayerHit(10); // 假设普通敌人碰撞造成10点伤害
+                // 根据敌人类型设置不同的碰撞伤害
+                let collisionDamage;
+                if (enemy.type === 'fighter3') {
+                    collisionDamage = 20; // 精英战机碰撞伤害最高
+                } else if (enemy.type === 'fighter2') {
+                    collisionDamage = 15; // 强化战机中等伤害
+                } else {
+                    collisionDamage = 10; // 基础战机伤害最低
+                }
+                handlePlayerHit(collisionDamage);
                 break;
             }
         }
