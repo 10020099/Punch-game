@@ -1,6 +1,6 @@
 # Punch-game
 
-`Punch-game` 是一个基于 HTML5 Canvas 和純 JavaScript 实现的空战射击小游戏。玩家需要操控战机击败不断涌出的敌人，并通过收集道具和升级来提升战力，最终挑战 Boss 获取更高积分。所有进度都会存储在浏览器的 localStorage 中，下次打开页面即可继续游玩。
+`Punch-game` 是一个基于 HTML5 Canvas 和 JavaScript 实现的空战射击小游戏。玩家需要操控战机击败不断涌出的敌人，并通过收集道具和升级来提升战力，最终挑战 Boss 获取更高积分。所有进度都会存储在浏览器的 localStorage 中，下次打开页面即可继续游玩。
 
 ## 基本操作
 - 方向键：移动战机
