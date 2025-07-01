@@ -14,6 +14,209 @@ const closeCheatPanelButton = document.getElementById('close-cheat-panel-button'
 const DEBUG = false;
 const debugLog = (...args) => { if (DEBUG) console.log(...args); };
 
+// ============================================================================
+// 🚀 性能优化：空间分割碰撞检测系统
+// ============================================================================
+class SpatialGrid {
+    constructor(width, height, cellSize = 50) {
+        this.width = width;
+        this.height = height;
+        this.cellSize = cellSize;
+        this.cols = Math.ceil(width / cellSize);
+        this.rows = Math.ceil(height / cellSize);
+        this.grid = [];
+        this.clear();
+    }
+
+    clear() {
+        this.grid = [];
+        for (let i = 0; i < this.cols * this.rows; i++) {
+            this.grid[i] = [];
+        }
+    }
+
+    insert(object) {
+        const left = Math.max(0, Math.floor((object.x - object.width/2) / this.cellSize));
+        const right = Math.min(this.cols - 1, Math.floor((object.x + object.width/2) / this.cellSize));
+        const top = Math.max(0, Math.floor((object.y - object.height/2) / this.cellSize));
+        const bottom = Math.min(this.rows - 1, Math.floor((object.y + object.height/2) / this.cellSize));
+
+        object._gridCells = [];
+        for (let row = top; row <= bottom; row++) {
+            for (let col = left; col <= right; col++) {
+                const index = row * this.cols + col;
+                this.grid[index].push(object);
+                object._gridCells.push(index);
+            }
+        }
+    }
+
+    query(object) {
+        const results = new Set();
+        if (!object._gridCells) return Array.from(results);
+        
+        for (const cellIndex of object._gridCells) {
+            if (cellIndex >= 0 && cellIndex < this.grid.length) {
+                for (const other of this.grid[cellIndex]) {
+                    if (other !== object) {
+                        results.add(other);
+                    }
+                }
+            }
+        }
+        return Array.from(results);
+    }
+}
+
+const spatialGrid = new SpatialGrid(canvas.width, canvas.height, 50);
+
+// ============================================================================
+// 🎯 UI优化：伤害数字显示系统
+// ============================================================================
+class DamageNumber {
+    constructor(x, y, damage, color = '#FF4444', type = 'normal') {
+        this.x = x + (Math.random() - 0.5) * 20;
+        this.y = y;
+        this.damage = damage;
+        this.color = color;
+        this.type = type;
+        this.life = 1500;
+        this.maxLife = this.life;
+        this.fontSize = type === 'critical' ? 22 : 16;
+        this.velocity = type === 'critical' ? -2.5 : -1.8;
+        this.scale = 1;
+        this.opacity = 1;
+        this.wiggleOffset = 0;
+    }
+
+    update(deltaTime) {
+        this.life -= deltaTime;
+        this.y += this.velocity;
+        
+        const lifeRatio = this.life / this.maxLife;
+        
+        if (lifeRatio > 0.8) {
+            this.scale = 1 + Math.sin(Date.now() / 100) * 0.2;
+        } else if (lifeRatio > 0.3) {
+            this.scale = 1;
+            if (this.type === 'critical') {
+                this.wiggleOffset = Math.sin(Date.now() / 100) * 2;
+            }
+        } else {
+            this.opacity = lifeRatio / 0.3;
+            this.scale = 0.8 + lifeRatio * 0.2;
+        }
+
+        return this.life > 0;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = this.opacity;
+        ctx.font = `bold ${this.fontSize * this.scale}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        const x = this.x + this.wiggleOffset;
+        const y = this.y;
+        
+        // 描边
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.strokeText(this.damage.toString(), x, y);
+        
+        // 填充
+        ctx.fillStyle = this.color;
+        if (this.type === 'critical') {
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = this.color;
+        }
+        ctx.fillText(this.damage.toString(), x, y);
+        
+        ctx.restore();
+    }
+}
+
+class DamageNumberManager {
+    constructor() {
+        this.numbers = [];
+    }
+
+    add(x, y, damage, color = '#FFD700', type = 'normal') {
+        this.numbers.push(new DamageNumber(x, y, damage, color, type));
+    }
+
+    update(deltaTime) {
+        for (let i = this.numbers.length - 1; i >= 0; i--) {
+            if (!this.numbers[i].update(deltaTime)) {
+                this.numbers.splice(i, 1);
+            }
+        }
+    }
+
+    draw(ctx) {
+        this.numbers.forEach(number => number.draw(ctx));
+    }
+
+    clear() {
+        this.numbers = [];
+    }
+}
+
+const damageNumbers = new DamageNumberManager();
+
+// ============================================================================
+// ✨ UI优化：增强的健康条渲染系统  
+// ============================================================================
+class HealthBarRenderer {
+    static drawAnimatedBar(ctx, x, y, width, height, current, max, colors = {}) {
+        const ratio = current / max;
+        
+        // 背景
+        ctx.fillStyle = colors.bg || 'rgba(0,0,0,0.6)';
+        ctx.fillRect(x, y, width, height);
+        
+        // 健康条渐变色
+        const gradient = ctx.createLinearGradient(x, y, x + width, y);
+        if (ratio > 0.6) {
+            gradient.addColorStop(0, colors.high || '#00FF44');
+            gradient.addColorStop(1, colors.highEnd || '#88FF88');
+        } else if (ratio > 0.3) {
+            gradient.addColorStop(0, colors.medium || '#FFAA00');
+            gradient.addColorStop(1, colors.mediumEnd || '#FFDD44');
+        } else {
+            gradient.addColorStop(0, colors.low || '#FF3333');
+            gradient.addColorStop(1, colors.lowEnd || '#FF6666');
+            
+            // 低血量闪烁
+            ctx.save();
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = colors.low || '#FF3333';
+            ctx.globalAlpha = 0.7 + 0.3 * Math.sin(Date.now() / 200);
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, y, width * ratio, height);
+        
+        if (ratio <= 0.3) {
+            ctx.restore();
+        }
+        
+        // 边框
+        ctx.strokeStyle = colors.border || 'white';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, width, height);
+        
+        // 数值显示
+        if (height >= 12) {
+            ctx.fillStyle = 'white';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${Math.ceil(current)}/${max}`, x + width/2, y + height/2 + 3);
+        }
+    }
+}
+
 // 简单的子弹对象池减少内存分配
 const bulletPool = [];
 function getBullet() {
@@ -1615,10 +1818,13 @@ function infernalVortexAttack() {
 }
 
 function update() {
-    // 更新特效系统
+    const deltaTime = 16; // 假设60fps，每帧约16ms
+    
+    // 🚀 更新优化的特效系统
     updateParticles();
     updateScreenShake();
     updateScreenFlash();
+    damageNumbers.update(deltaTime); // 更新伤害数字
 
     // Boss模式下按总体游玩时间调整攻击间隔（每帧检查）
     updateBossAttackInterval();
@@ -1760,123 +1966,169 @@ function update() {
         if (boss.x - boss.width / 2 < 0 || boss.x + boss.width / 2 > canvas.width) {
             boss.dx *= -1; // 改变方向
         }
-        // Boss 与玩家子弹碰撞
-        for (let j = player.bullets.length - 1; j >= 0; j--) {
-            let bullet = player.bullets[j];
-            if (bullet.x < boss.x + boss.width / 2 &&
-                bullet.x + bullet.width > boss.x - boss.width / 2 &&
-                bullet.y < boss.y + boss.height / 2 &&
-                bullet.y + bullet.height > boss.y - boss.height / 2) {
-                player.bullets.splice(j, 1); // 子弹消失
-                releaseBullet(bullet);
+        // 🚀 优化版Boss碰撞检测：Boss vs 玩家子弹
+        if (player.bullets.length > 0) {
+            spatialGrid.clear();
+            spatialGrid.insert(boss);
+            
+            for (let j = player.bullets.length - 1; j >= 0; j--) {
+                let bullet = player.bullets[j];
+                spatialGrid.insert(bullet);
                 
-                let damageDealt = player.bulletDamage * 10; // 基础伤害，乘以玩家子弹伤害系数
+                const candidates = spatialGrid.query(bullet);
+                
+                for (const candidate of candidates) {
+                    if (candidate === boss &&
+                        bullet.x - bullet.width/2 < boss.x + boss.width/2 &&
+                        bullet.x + bullet.width/2 > boss.x - boss.width/2 &&
+                        bullet.y - bullet.height/2 < boss.y + boss.height/2 &&
+                        bullet.y + bullet.height/2 > boss.y - boss.height/2) {
+                        
+                        player.bullets.splice(j, 1);
+                        releaseBullet(bullet);
+                        
+                        // 计算伤害
+                        const baseDamage = Math.floor(player.bulletDamage * 10);
+                        const isCritical = Math.random() < 0.08; // Boss暴击率稍低
+                        let damageDealt = isCritical ? baseDamage * 1.5 : baseDamage;
+                        
+                        // 场地真实伤害buff
+                        if (backgroundIndex === 1) {
+                            let realDamageForBuff = isUsingGoldenFighter ? 
+                                1 + (goldenFighterKillsForBuff * 2) : 
+                                1 + normalFighterKillsForBuff;
+                            damageDealt += realDamageForBuff;
+                        }
 
-                // Boss受伤特效
-                boss.damageFlashTime = 200; // 闪烁200ms
-                createParticles(bullet.x, bullet.y, 8, {
-                    color: boss.shield > 0 ? '#00BFFF' : '#FF4500',
-                    size: 3,
-                    speed: 3,
-                    life: 600,
-                    spread: Math.PI
-                });
-
-                if (boss.shield > 0) {
-                    boss.shield -= damageDealt;
-                    if (boss.shield < 0) {
-                        boss.health += boss.shield;
-                        boss.shield = 0;
-                        // 护盾破碎特效
-                        createParticles(boss.x, boss.y, 25, {
-                            color: '#00BFFF',
-                            size: 5,
-                            speed: 6,
-                            life: 1200,
-                            spread: Math.PI * 2
+                        boss.damageFlashTime = 200;
+                        
+                        // 判断攻击护盾还是血量
+                        const hitShield = boss.shield > 0;
+                        let displayDamage = damageDealt;
+                        
+                        if (hitShield) {
+                            const oldShield = boss.shield;
+                            boss.shield -= damageDealt;
+                            if (boss.shield < 0) {
+                                boss.health += boss.shield; // 溢出伤害给血量
+                                displayDamage = oldShield; // 只显示对护盾的伤害
+                                boss.shield = 0;
+                                
+                                // 🛡️ 护盾破碎特效
+                                createParticles(boss.x, boss.y, 25, {
+                                    color: '#00BFFF',
+                                    size: 5,
+                                    speed: 6,
+                                    life: 1200,
+                                    spread: Math.PI * 2
+                                });
+                                addScreenShake(10, 500);
+                                
+                                // 护盾破碎伤害数字
+                                damageNumbers.add(
+                                    boss.x, 
+                                    boss.y - 30, 
+                                    "护盾破碎!",
+                                    '#00BFFF',
+                                    'critical'
+                                );
+                            }
+                        } else {
+                            boss.health -= damageDealt;
+                        }
+                        
+                        // 💥 显示伤害数字
+                        damageNumbers.add(
+                            bullet.x, 
+                            bullet.y - 20, 
+                            Math.floor(displayDamage),
+                            hitShield ? '#00BFFF' : (isCritical ? '#FF4444' : '#FFD700'),
+                            isCritical ? 'critical' : 'normal'
+                        );
+                        
+                        // ✨ 击中特效
+                        const effectColor = hitShield ? '#00BFFF' : '#FF4500';
+                        const effectCount = isCritical ? 15 : 10;
+                        
+                        createParticles(bullet.x, bullet.y, effectCount, {
+                            color: effectColor,
+                            size: isCritical ? 4 : 3,
+                            speed: isCritical ? 5 : 3,
+                            life: 800,
+                            spread: Math.PI
                         });
-                        addScreenShake(8, 400);
+                        
+                        if (isCritical) {
+                            addScreenShake(5, 150);
+                        }
+
+                        if (boss.health < 0) boss.health = 0;
+                        
+                        break; // 停止检查该子弹的其他碰撞
                     }
-                } else if (boss.health > 0) {
-                    boss.health -= damageDealt;
                 }
-                
-                if (backgroundIndex === 1 && boss.health > 0) {
-                    // 场地真实伤害，根据击杀数计算
-                    let realDamageForBuff;
-                    if (isUsingGoldenFighter) {
-                        realDamageForBuff = 1 + (goldenFighterKillsForBuff * 2);
-                    } else {
-                        realDamageForBuff = 1 + normalFighterKillsForBuff;
-                    }
-                    boss.health -= realDamageForBuff; 
-                    debugLog(`场地真实伤害 (基于击杀): 对Boss造成 ${realDamageForBuff} 点伤害`);
-                }
+            }
+        }
 
-                if (boss.health < 0) boss.health = 0;
+        if (boss && boss.health <= 0) {
+            // Boss死亡爆炸特效
+            createParticles(boss.x, boss.y, 50, {
+                color: '#FFD700',
+                size: 8,
+                speed: 8,
+                life: 2000,
+                spread: Math.PI * 2
+            });
+            createParticles(boss.x, boss.y, 30, {
+                color: '#FF4500',
+                size: 12,
+                speed: 6,
+                life: 1500,
+                spread: Math.PI * 2
+            });
+            addScreenShake(20, 800);
+            addScreenFlash(0.5, 300);
 
-                if (boss.health <= 0) {
-                    // Boss死亡爆炸特效
-                    createParticles(boss.x, boss.y, 50, {
-                        color: '#FFD700',
-                        size: 8,
-                        speed: 8,
-                        life: 2000,
-                        spread: Math.PI * 2
-                    });
-                    createParticles(boss.x, boss.y, 30, {
-                        color: '#FF4500',
-                        size: 12,
-                        speed: 6,
-                        life: 1500,
-                        spread: Math.PI * 2
-                    });
-                    addScreenShake(20, 800);
-                    addScreenFlash(0.5, 300);
+            let bossKillScore = 500; // Base score for defeating a boss
+            // Adjust score based on which boss and its spawn count (difficulty)
+            if (boss.type === 'boss1') {
+                bossKillScore += (bossSpawnCount) * 100; // bossSpawnCount already reflects current encounter's level due to createBoss logic
+            } else if (boss.type === 'boss2') {
+                bossKillScore += (boss2SpawnCount) * 150; // Boss 2 might be worth more
+            } else if (boss.type === 'boss3') {
+                bossKillScore += (boss3SpawnCount) * 200; // Boss 3 地狱主题，价值最高
+            }
 
-                    let bossKillScore = 500; // Base score for defeating a boss
-                    // Adjust score based on which boss and its spawn count (difficulty)
-                    if (boss.type === 'boss1') {
-                        bossKillScore += (bossSpawnCount) * 100; // bossSpawnCount already reflects current encounter's level due to createBoss logic
-                    } else if (boss.type === 'boss2') {
-                        bossKillScore += (boss2SpawnCount) * 150; // Boss 2 might be worth more
-                    } else if (boss.type === 'boss3') {
-                        bossKillScore += (boss3SpawnCount) * 200; // Boss 3 地狱主题，价值最高
-                    }
+            if (player.isScoreMultiplierActive) bossKillScore *= 2;
+            score += bossKillScore; // 总分增加
+            scoreElement.textContent = `分数: ${score}`;
 
-                    if (player.isScoreMultiplierActive) bossKillScore *= 2;
-                    score += bossKillScore; // 总分增加
-                    scoreElement.textContent = `分数: ${score}`;
+            const defeatedBossType = boss.type; // Store type before boss is nulled
+            bossActive = false;
+            boss = null;
 
-                    const defeatedBossType = boss.type; // Store type before boss is nulled
-                    bossActive = false;
-                    boss = null;
+            // Increment defeat counters for scaling next appearance
+            if (defeatedBossType === 'boss1') {
+                bossSpawnCount++;
+                debugLog(`Boss 1 defeated. Boss 1 appearance count for next scaling: ${bossSpawnCount}`);
+            } else if (defeatedBossType === 'boss2') {
+                boss2SpawnCount++;
+                debugLog(`Boss 2 defeated. Boss 2 appearance count for next scaling: ${boss2SpawnCount}`);
+            } else if (defeatedBossType === 'boss3') {
+                boss3SpawnCount++;
+                debugLog(`Boss 3 defeated. Boss 3 appearance count for next scaling: ${boss3SpawnCount}`);
+            }
+            
+            nextBossScore += scoreForBoss; 
+            debugLog(`Boss (${defeatedBossType}) 被击败! Next Boss score trigger: ${nextBossScore}. Total score: ${score}, Boss trigger score: ${scoreForBossTrigger}`);
 
-                    // Increment defeat counters for scaling next appearance
-                    if (defeatedBossType === 'boss1') {
-                        bossSpawnCount++;
-                        debugLog(`Boss 1 defeated. Boss 1 appearance count for next scaling: ${bossSpawnCount}`);
-                    } else if (defeatedBossType === 'boss2') {
-                        boss2SpawnCount++;
-                        debugLog(`Boss 2 defeated. Boss 2 appearance count for next scaling: ${boss2SpawnCount}`);
-                    } else if (defeatedBossType === 'boss3') {
-                        boss3SpawnCount++;
-                        debugLog(`Boss 3 defeated. Boss 3 appearance count for next scaling: ${boss3SpawnCount}`);
-                    }
-                    
-                    nextBossScore += scoreForBoss; 
-                    debugLog(`Boss (${defeatedBossType}) 被击败! Next Boss score trigger: ${nextBossScore}. Total score: ${score}, Boss trigger score: ${scoreForBossTrigger}`);
-
-                    if (bossMode) {
-                        // Boss模式：2秒后生成下一只Boss，形成连续Boss战
-                        setTimeout(() => {
-                            if (!isGamePaused) createBoss();
-                        }, 2000);
-                    } else {
-                        startEnemyCreation(); 
-                    }
-                    break;
-                }
+            if (bossMode) {
+                // Boss模式：2秒后生成下一只Boss，形成连续Boss战
+                setTimeout(() => {
+                    if (!isGamePaused) createBoss();
+                }, 2000);
+            } else {
+                startEnemyCreation(); 
             }
         }
 
@@ -2012,60 +2264,112 @@ function update() {
     }
 
 
-    // Detect collision between normal enemies and bullets
-    if (!bossActive) {
-        for (let i = enemies.length - 1; i >= 0; i--) {
-            let enemy = enemies[i];
-            for (let j = player.bullets.length - 1; j >= 0; j--) {
-                let bullet = player.bullets[j];
-                if (bullet.x < enemy.x + enemy.width &&
-                    bullet.x + bullet.width > enemy.x &&
-                    bullet.y < enemy.y + enemy.height &&
-                    bullet.y + bullet.height > enemy.y) {
+    // 🚀 优化版碰撞检测：玩家子弹 vs 敌人
+    if (!bossActive && enemies.length > 0 && player.bullets.length > 0) {
+        spatialGrid.clear();
+        
+        // 将敌人插入空间网格
+        enemies.forEach(enemy => spatialGrid.insert(enemy));
+        
+        for (let j = player.bullets.length - 1; j >= 0; j--) {
+            let bullet = player.bullets[j];
+            spatialGrid.insert(bullet);
+            
+            const candidates = spatialGrid.query(bullet);
+            let bulletHit = false;
+            
+            for (const enemy of candidates) {
+                if (enemies.includes(enemy) && 
+                    bullet.x - bullet.width/2 < enemy.x + enemy.width/2 &&
+                    bullet.x + bullet.width/2 > enemy.x - enemy.width/2 &&
+                    bullet.y - bullet.height/2 < enemy.y + enemy.height/2 &&
+                    bullet.y + bullet.height/2 > enemy.y - enemy.height/2) {
+                    
+                    // 计算伤害和暴击
+                    const baseDamage = Math.floor(player.bulletDamage * 10);
+                    const isCritical = Math.random() < 0.12; // 12%暴击率
+                    const finalDamage = isCritical ? baseDamage * 2 : baseDamage;
+                    
+                    // 💥 显示伤害数字
+                    damageNumbers.add(
+                        bullet.x, 
+                        bullet.y - 15, 
+                        finalDamage,
+                        isCritical ? '#FF4444' : '#FFD700',
+                        isCritical ? 'critical' : 'normal'
+                    );
+                    
+                    // ✨ 创建击中特效
+                    if (isCritical) {
+                        createParticles(bullet.x, bullet.y, 15, {
+                            color: '#FF4444',
+                            size: 4,
+                            speed: 5,
+                            life: 800,
+                            spread: Math.PI * 2
+                        });
+                        addScreenShake(6, 200);
+                    } else {
+                        createParticles(bullet.x, bullet.y, 8, {
+                            color: '#FFD700',
+                            size: 3,
+                            speed: 3,
+                            life: 600,
+                            spread: Math.PI
+                        });
+                    }
                     
                     player.bullets.splice(j, 1);
                     releaseBullet(bullet);
+                    bulletHit = true;
 
-                    // Handle enemy health
-                    enemy.health -= 1; // Assuming player bullet does 1 damage
+                    // 处理敌人受伤
+                    enemy.health = (enemy.health || 50) - finalDamage;
 
                     if (enemy.health <= 0) {
+                        const enemyIndex = enemies.indexOf(enemy);
                         releaseEnemy(enemy);
-                        enemies.splice(i, 1);
+                        enemies.splice(enemyIndex, 1);
+                        
                         // 根据敌人类型设置不同的分数奖励
                         let enemyKillScore;
                         if (enemy.type === 'fighter3') {
-                            enemyKillScore = 30; // 精英战机分数最高
+                            enemyKillScore = 30;
                         } else if (enemy.type === 'fighter2') {
-                            enemyKillScore = 20; // 强化战机中等分数
+                            enemyKillScore = 20;
                         } else {
-                            enemyKillScore = 10; // 基础战机分数最低
+                            enemyKillScore = 10;
                         }
                         if (player.isScoreMultiplierActive) enemyKillScore *= 2;
-                        score += enemyKillScore;  // 总分增加
-                        scoreForBossTrigger += enemyKillScore; // Boss触发分也增加
+                        score += enemyKillScore;
+                        scoreForBossTrigger += enemyKillScore;
                         scoreElement.textContent = `分数: ${score}`;
 
-                        // Add to kill counts for buffs, ensuring enemy object still exists for type check
+                        // 击杀计数
                         if (isUsingGoldenFighter) {
                             goldenFighterKillsForBuff++;
                         } else {
                             normalFighterKillsForBuff++;
                         }
-                        debugLog(`场地Buff击杀计数 - 普通: ${normalFighterKillsForBuff}, 黄金: ${goldenFighterKillsForBuff}`);
-
-                        if (backgroundIndex === 1) {
-                            debugLog(`敌人 (${enemy.type}) 在背景1下被击中并消灭`);
-                        } else {
-                            debugLog(`敌人 (${enemy.type}) 在背景2下被击中并消灭`);
-                        }
+                        
+                        // 🎉 击杀特效
+                        createParticles(enemy.x, enemy.y, 20, {
+                            color: '#FF8800',
+                            size: 5,
+                            speed: 4,
+                            life: 1000,
+                            spread: Math.PI * 2
+                        });
+                        
+                        debugLog(`敌人 (${enemy.type}) 被消灭！伤害: ${finalDamage}${isCritical ? ' (暴击!)' : ''}`);
                     } else {
-                        // Enemy is damaged but not destroyed
-                        debugLog(`敌人 (${enemy.type}) 受伤, 剩余生命: ${enemy.health}`);
+                        debugLog(`敌人 (${enemy.type}) 受伤: ${finalDamage}, 剩余生命: ${enemy.health}`);
                     }
-                    break; 
+                    break;
                 }
             }
+            
+            if (bulletHit) break;
         }
     }
 
@@ -2497,19 +2801,50 @@ function draw() {
             ctx.restore();
         }
 
-        // 绘制Boss护盾条
+        // 🎨 绘制增强版Boss血条和护盾
         if (boss.shield > 0) {
-            ctx.fillStyle = 'rgba(0, 150, 255, 0.7)'; // 蓝色护盾条
-            ctx.fillRect(boss.x - boss.width / 2, boss.y - boss.height / 2 - 20, boss.width * (boss.shield / boss.maxShield), 10);
-            ctx.strokeStyle = 'white';
-            ctx.strokeRect(boss.x - boss.width / 2, boss.y - boss.height / 2 - 20, boss.width, 10);
+            HealthBarRenderer.drawAnimatedBar(
+                ctx,
+                boss.x - boss.width / 2,
+                boss.y - boss.height / 2 - 22,
+                boss.width,
+                12,
+                boss.shield,
+                boss.maxShield,
+                {
+                    bg: 'rgba(0,0,0,0.7)',
+                    high: '#00AAFF',
+                    highEnd: '#66CCFF',
+                    medium: '#0088FF',
+                    mediumEnd: '#44AAFF',
+                    low: '#0066FF',
+                    lowEnd: '#0088FF',
+                    border: 'white'
+                }
+            );
         }
-        // 绘制Boss血条
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.7)'; // 红色血条
-        const healthBarY = boss.shield > 0 ? boss.y - boss.height / 2 - 35 : boss.y - boss.height / 2 - 20; // 如果有护盾，血条在护盾条下方
-        ctx.fillRect(boss.x - boss.width / 2, healthBarY, boss.width * (boss.health / boss.maxHealth), 10);
-        ctx.strokeStyle = 'white';
-        ctx.strokeRect(boss.x - boss.width / 2, healthBarY, boss.width, 10);
+        
+        // Boss血条
+        const healthBarY = boss.shield > 0 ? boss.y - boss.height / 2 - 38 : boss.y - boss.height / 2 - 22;
+        HealthBarRenderer.drawAnimatedBar(
+            ctx,
+            boss.x - boss.width / 2,
+            healthBarY,
+            boss.width,
+            12,
+            boss.health,
+            boss.maxHealth,
+            {
+                bg: 'rgba(0,0,0,0.7)',
+                high: '#00FF44',
+                highEnd: '#88FF88',
+                medium: '#FFAA00',
+                mediumEnd: '#FFDD44',
+                low: '#FF3333',
+                lowEnd: '#FF6666',
+                border: 'gold'
+            }
+        );
 
         // 绘制Boss子弹 - 根据攻击类型显示不同颜色
         for (let bBullet of boss.bullets) {
@@ -2653,6 +2988,9 @@ function draw() {
 
     // 绘制粒子效果（不受屏幕震动影响）
     drawParticles();
+
+    // 💥 绘制伤害数字（在粒子之后，确保可见）
+    damageNumbers.draw(ctx);
 
     // 绘制屏幕闪白效果（最后绘制，覆盖所有内容）
     drawScreenFlash();
