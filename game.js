@@ -1,4 +1,5 @@
 const canvas = document.getElementById('gameCanvas');
+const canvasBackground = document.getElementById('canvas-background');
 const ctx = canvas.getContext('2d');
 const scoreElement = document.getElementById('score');
 const upgradePanel = document.getElementById('upgrade-panel');
@@ -14,6 +15,10 @@ const challengeRulesPanel = document.getElementById('challenge-rules');
 const challengeWinDisplay = document.getElementById('challenge-win-display');
 const challengeResultDetail = document.getElementById('challenge-result-detail');
 const challengeWinCountDisplay = document.getElementById('challenge-win-count');
+const returnToMenuButton = document.getElementById('return-to-menu-button');
+const startButton = document.getElementById('start-button');
+const bossStartButton = document.getElementById('boss-start-button');
+const restartButton = document.getElementById('restart-button');
 
 // 调试开关
 const DEBUG = false;
@@ -399,7 +404,15 @@ const GAME_MODES = Object.freeze({
     BOSS: 'BOSS',
     CHALLENGE: 'CHALLENGE'
 });
+const GAME_STATES = Object.freeze({
+    MENU: 'MENU',
+    RUNNING: 'RUNNING',
+    PAUSED: 'PAUSED',
+    RESULT: 'RESULT'
+});
 let currentGameMode = GAME_MODES.NORMAL;
+let gameState = GAME_STATES.MENU;
+let previousGameStateBeforePause = GAME_STATES.MENU;
 let bossModeStartTime = 0;
 
 // Boss关卡模式标志
@@ -409,13 +422,13 @@ const CHALLENGE_BOSS_HP_MULTIPLIER = 100;
 const CHALLENGE_ATTACK_CADENCE_MULTIPLIER = 0.75;
 const CHALLENGE_ENRAGE_DURATION = 10000; // ms
 const CHALLENGE_STATES = Object.freeze({
-    INACTIVE: 'INACTIVE',
+    INIT: 'INIT',
     FIGHT: 'FIGHT',
     ENRAGE: 'ENRAGE',
     VICTORY: 'VICTORY',
     DEFEAT: 'DEFEAT'
 });
-let challengeState = CHALLENGE_STATES.INACTIVE;
+let challengeState = CHALLENGE_STATES.INIT;
 let challengeTimerRemaining = 0;
 let challengeSelectedBossType = null;
 let challengeEnrageStartTime = 0;
@@ -763,7 +776,9 @@ document.addEventListener('keydown', (e) => {
     // 空格键现在用于切换背景
     if (e.code === 'Space') {
         backgroundIndex = backgroundIndex === 1 ? 2 : 1;
-        document.getElementById('canvas-background').style.backgroundImage = `url('assets/images/container background${backgroundIndex}.png')`;
+        if (canvasBackground) {
+            canvasBackground.style.backgroundImage = `url('assets/images/container background${backgroundIndex}.png')`;
+        }
         debugLog(`背景切换到: ${backgroundIndex}`);
         // 当切换到背景2时，重置护盾回复计时器，以便立即开始计算回复
         if (backgroundIndex === 2) {
@@ -806,10 +821,7 @@ function toggleUpgradePanel() {
 }
 
 function openUpgradePanel() {
-    isGamePaused = true;
-    cancelAnimationFrame(gameLoopRequestId);
-    clearInterval(enemyInterval); // 停止生成敌人
-    // 如果Boss有独立的计时器行为，也需要在这里暂停
+    setGameState(GAME_STATES.PAUSED);
 
     upgradePanel.style.display = 'block';
     renderUpgradePanel(); // 打开时渲染/更新内容
@@ -817,15 +829,19 @@ function openUpgradePanel() {
 }
 
 function closeUpgradePanel() {
-    isGamePaused = false;
     upgradePanel.style.display = 'none';
-    
-    if (!bossActive) { // 只有在没有Boss时才恢复普通敌人生成
+
+    if (gameState === GAME_STATES.PAUSED) {
+        setGameState(GAME_STATES.RUNNING);
+    }
+
+    if (currentGameMode === GAME_MODES.NORMAL && !bossActive) { // 只有在普通模式且没有Boss时才恢复普通敌人生成
         startEnemyCreation();
     }
-    // 如果Boss有独立的计时器行为，也需要在这里恢复
-    
-    gameLoopRequestId = requestAnimationFrame(gameLoop); // 重新启动游戏循环
+
+    if (gameState === GAME_STATES.RUNNING && !gameLoopRequestId) {
+        gameLoopRequestId = requestAnimationFrame(gameLoop);
+    }
     debugLog("游戏已恢复，强化面板关闭");
 }
 
@@ -839,9 +855,7 @@ function toggleCheatPanel() {
 }
 
 function openCheatPanel() {
-    isGamePaused = true;
-    cancelAnimationFrame(gameLoopRequestId);
-    clearInterval(enemyInterval);
+    setGameState(GAME_STATES.PAUSED);
     if (upgradePanel.style.display === 'block') {
         upgradePanel.style.display = 'none';
     }
@@ -850,12 +864,16 @@ function openCheatPanel() {
 }
 
 function closeCheatPanel() {
-    isGamePaused = false;
     cheatPanel.style.display = 'none';
-    if (!bossActive) {
+    if (gameState === GAME_STATES.PAUSED) {
+        setGameState(GAME_STATES.RUNNING);
+    }
+    if (currentGameMode === GAME_MODES.NORMAL && !bossActive) {
         startEnemyCreation();
     }
-    gameLoopRequestId = requestAnimationFrame(gameLoop);
+    if (gameState === GAME_STATES.RUNNING && !gameLoopRequestId) {
+        gameLoopRequestId = requestAnimationFrame(gameLoop);
+    }
     debugLog('游戏已恢复，作弊面板关闭');
 }
 
@@ -1077,8 +1095,16 @@ function clearChallengeEnragePatterns() {
 function startChallengeEnragePatterns() {
     clearChallengeEnragePatterns();
 
+    if (!boss) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
+
     const radialInterval = setInterval(() => {
         if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         const bulletCount = 20;
         const angleOffset = (Date.now() / 320) % (Math.PI * 2);
         const speed = 2.6;
@@ -1100,6 +1126,9 @@ function startChallengeEnragePatterns() {
 
     const fanInterval = setInterval(() => {
         if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
         const wave = Math.sin(Date.now() / 400) * 0.25;
         for (let i = -3; i <= 3; i++) {
@@ -1119,6 +1148,9 @@ function startChallengeEnragePatterns() {
 
     const rainInterval = setInterval(() => {
         if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         const columns = 6;
         const spacing = canvas.width / (columns + 1);
         for (let i = 0; i < columns; i++) {
@@ -1140,6 +1172,9 @@ function startChallengeEnragePatterns() {
 
 function enterChallengeEnragePhase() {
     if (!boss) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     challengeState = CHALLENGE_STATES.ENRAGE;
     challengeTimerRemaining = CHALLENGE_ENRAGE_DURATION;
@@ -1188,6 +1223,9 @@ function completeChallengeVictory() {
         });
         addScreenShake(20, 600);
         addScreenFlash(0.5, 260);
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         boss.bullets.forEach(releaseBullet);
         boss.bullets = [];
     }
@@ -1222,6 +1260,9 @@ function handleChallengeDefeat() {
 
     if (boss) {
         boss.isInvulnerable = false;
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         boss.bullets.forEach(releaseBullet);
         boss.bullets = [];
     }
@@ -1239,6 +1280,9 @@ function handleChallengeDefeat() {
 
 // 创建敌方战机
 function createEnemy() {
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        return;
+    }
     if (!bossActive) { // 只有在没有Boss时才创建普通敌人
         const randomValue = Math.random();
         let newEnemy = getEnemy();                // 使用对象池
@@ -1449,6 +1493,9 @@ function createBossSpawnEffects() {
 // 螺旋弹幕攻击
 function spiralBulletAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     const bulletCount = 8;  // 每一圈发射的子弹数
     const spiralDuration = 3000;  // 螺旋持续时间(ms)
@@ -1521,6 +1568,9 @@ function spiralBulletAttack() {
 // 追踪弹攻击
 function homingBulletAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     const bulletCount = 3;  // 发射3颗追踪弹
     const bulletSpeed = 1.2 * (boss && boss.bulletSpeedFactor || 1);
@@ -1584,6 +1634,9 @@ function homingBulletAttack() {
 // 圆形扩散弹幕
 function circularBulletAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     const waveCount = 3;  // 发射3波
     const bulletsPerWave = 16;  // 每波16颗子弹
@@ -1654,6 +1707,9 @@ function circularBulletAttack() {
 // 1) 扇形散射：正前方 5 发子弹呈扇形快速扫射
 function fanSpreadAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
     const waves = 4;           // 扫射 4 轮
     const bulletsPerWave = 5;
     const spread = Math.PI / 4;       // 总扩散角 45°
@@ -1705,6 +1761,9 @@ function fanSpreadAttack() {
 // 2) 反弹弹：两侧各发射 3 颗可在屏幕左右弹跳的子弹
 function zigzagBounceAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
     const sides = [-1, 1];          // 左 / 右 两组
     const bulletSpeed = 2.2 * (boss && boss.bulletSpeedFactor || 1);
 
@@ -1759,6 +1818,9 @@ function zigzagBounceAttack() {
 // 3) 扩张环：中心发射两圈子弹，第二圈稍后、半径略大
 function expandingRingAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
     const rings = 2;
     const bulletsPerRing = 18;
     const baseSpeed = 1.6 * (boss && boss.bulletSpeedFactor || 1);
@@ -1821,6 +1883,9 @@ function expandingRingAttack() {
 // 1) 地狱火雨：从天而降的火球攻击，具有燃烧轨迹和爆炸效果
 function hellFireRainAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     const meteorCount = 8; // 火球数量
     const rainDuration = 4000; // 攻击持续时间
@@ -1906,6 +1971,9 @@ function hellFireRainAttack() {
 // 2) 恶魔之眼激光：跟踪玩家的激光束攻击
 function demonEyeLaserAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     const laserDuration = 3000; // 激光持续时间
     const laserWidth = 30; // 激光宽度
@@ -1988,6 +2056,9 @@ function demonEyeLaserAttack() {
 // 3) 炼狱漩涡：旋转的能量漩涡，吸引玩家并发射螺旋火焰弹
 function infernalVortexAttack() {
     if (!boss || isGamePaused) return;
+    if (!Array.isArray(boss.bullets)) {
+        boss.bullets = [];
+    }
 
     const vortexDuration = 5000; // 漩涡持续时间
     const spiralBullets = 12; // 每圈螺旋弹数量
@@ -2244,6 +2315,9 @@ function update() {
 
     // 更新Boss
     if (bossActive && boss) {
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         // 更新Boss特效
         boss.energyRingRotation += 0.02; // 能量光环旋转
         if (boss.damageFlashTime > 0) {
@@ -2740,6 +2814,8 @@ function gameOver() {
     const resultData = challengeResultData;
     const wasVictory = isChallengeMode && resultData && resultData.result === 'victory';
 
+    setGameState(GAME_STATES.RESULT);
+
     // 暂停游戏循环并清理计时器
     isGamePaused = true;
     cancelAnimationFrame(gameLoopRequestId);
@@ -2811,6 +2887,9 @@ function gameOver() {
     // 重置激活的道具效果
     Object.keys(player.activePowerUps).forEach(type => deactivatePowerUp(type, true)); // silent = true, 避免重复设置基础值
     if (boss) {
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         boss.bullets.forEach(releaseBullet);
         boss.bullets = []; // 清空Boss子弹
     }
@@ -2839,8 +2918,10 @@ function gameOver() {
     scoreForBossTrigger = 0; // 重置用于触发Boss的分数
 
     if (isChallengeMode) {
-        challengeState = CHALLENGE_STATES.INACTIVE;
-        challengeSelectedBossType = null;
+        challengeState = CHALLENGE_STATES.INIT;
+        if (wasVictory) {
+            challengeSelectedBossType = null;
+        }
         challengeStartTime = 0;
     }
     challengeResultData = null;
@@ -3220,6 +3301,9 @@ function draw() {
         );
 
         // 绘制Boss子弹 - 根据攻击类型显示不同颜色
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
         for (let bBullet of boss.bullets) {
             ctx.save();
 
@@ -3657,10 +3741,9 @@ function drawActivePowerUpStatus() {
 
 // --- 游戏主循环和启动 ---
 function gameLoop() {
-    if (isGamePaused) {
-        // 如果游戏暂停，可以只绘制UI覆盖层或什么都不做，然后等待恢复
-        // requestAnimationFrame(gameLoop); // 如果希望暂停时仍保持动画循环（例如面板动画）
-        return; // 或者直接返回，完全停止，直到 unpause 时再调用 requestAnimationFrame
+    if (isGamePaused || gameState !== GAME_STATES.RUNNING) {
+        gameLoopRequestId = null;
+        return;
     }
     update();
     draw();
@@ -3672,9 +3755,193 @@ function startEnemyCreation() {
     enemyInterval = setInterval(createEnemy, 1000);
 }
 
+function showMenuButtons() {
+    if (startButton) startButton.style.display = 'block';
+    if (bossStartButton) bossStartButton.style.display = 'block';
+    if (challengeStartButton) challengeStartButton.style.display = 'block';
+}
+
+function hideMenuButtons() {
+    if (startButton) startButton.style.display = 'none';
+    if (bossStartButton) bossStartButton.style.display = 'none';
+    if (challengeStartButton) challengeStartButton.style.display = 'none';
+}
+
+function setGameState(newState) {
+    if (gameState === newState) return;
+    gameState = newState;
+
+    switch (newState) {
+        case GAME_STATES.MENU:
+            isGamePaused = true;
+            if (gameLoopRequestId) {
+                cancelAnimationFrame(gameLoopRequestId);
+                gameLoopRequestId = null;
+            }
+            if (enemyInterval) {
+                clearInterval(enemyInterval);
+                enemyInterval = null;
+            }
+            showMenuButtons();
+            if (challengeRulesPanel) {
+                challengeRulesPanel.style.display = 'block';
+            }
+            break;
+        case GAME_STATES.RUNNING:
+            isGamePaused = false;
+            hideMenuButtons();
+            if (challengeRulesPanel) {
+                challengeRulesPanel.style.display = 'none';
+            }
+            break;
+        case GAME_STATES.PAUSED:
+            isGamePaused = true;
+            if (gameLoopRequestId) {
+                cancelAnimationFrame(gameLoopRequestId);
+                gameLoopRequestId = null;
+            }
+            break;
+        case GAME_STATES.RESULT:
+            isGamePaused = true;
+            if (gameLoopRequestId) {
+                cancelAnimationFrame(gameLoopRequestId);
+                gameLoopRequestId = null;
+            }
+            if (enemyInterval) {
+                clearInterval(enemyInterval);
+                enemyInterval = null;
+            }
+            hideMenuButtons();
+            if (challengeRulesPanel) {
+                challengeRulesPanel.style.display = 'none';
+            }
+            break;
+    }
+}
+
+function cleanupRun({ preserveBossEntity = false } = {}) {
+    if (gameLoopRequestId) {
+        cancelAnimationFrame(gameLoopRequestId);
+        gameLoopRequestId = null;
+    }
+    if (enemyInterval) {
+        clearInterval(enemyInterval);
+        enemyInterval = null;
+    }
+
+    clearChallengeEnragePatterns();
+
+    player.bullets.forEach(releaseBullet);
+    player.bullets = [];
+    clearEnemiesArray();
+    clearPowerUpsArray();
+
+    particles.forEach(releaseParticle);
+    particles.length = 0;
+    damageNumbers.clear();
+    screenShake = { x: 0, y: 0, intensity: 0, duration: 0 };
+    screenFlash = { opacity: 0, duration: 0 };
+
+    lastPowerUpSpawnTime = 0;
+
+    if (boss && Array.isArray(boss.bullets)) {
+        boss.bullets.forEach(releaseBullet);
+        boss.bullets = [];
+    }
+
+    if (!preserveBossEntity) {
+        boss = null;
+        bossActive = false;
+    }
+
+    bossMode = false;
+    bossModeStartTime = 0;
+    isGamePaused = true;
+}
+
+function resetChallengeState() {
+    challengeState = CHALLENGE_STATES.INIT;
+    challengeSelectedBossType = null;
+    challengeTimerRemaining = 0;
+    challengeEnrageStartTime = 0;
+    challengeStartTime = 0;
+    challengeResultData = null;
+}
+
+function resetGlobalStateForNewRun(mode) {
+    cleanupRun();
+
+    currentGameMode = mode;
+    bossMode = mode === GAME_MODES.BOSS;
+
+    resetChallengeState();
+    if (mode === GAME_MODES.CHALLENGE) {
+        challengeState = CHALLENGE_STATES.FIGHT;
+        challengeStartTime = Date.now();
+    }
+
+    initializeGame();
+
+    player.x = canvas.width / 2;
+    player.y = canvas.height - 30;
+    player.lastAttackTime = 0;
+    player.lastShieldRegenTime = Date.now();
+
+    backgroundIndex = 1;
+    if (canvasBackground) {
+        canvasBackground.style.backgroundImage = `url('assets/images/container background${backgroundIndex}.png')`;
+    }
+
+    isGamePaused = false;
+    setGameState(GAME_STATES.RUNNING);
+}
+
+function spawnChallengeBoss() {
+    const possibleBosses = ['boss1', 'boss2', 'boss3'];
+    if (!challengeSelectedBossType) {
+        challengeSelectedBossType = possibleBosses[Math.floor(Math.random() * possibleBosses.length)];
+    }
+
+    createBoss({
+        forcedType: challengeSelectedBossType,
+        healthMultiplier: CHALLENGE_BOSS_HP_MULTIPLIER,
+        attackIntervalFactor: 1 / CHALLENGE_ATTACK_CADENCE_MULTIPLIER,
+        challengeAttackCadenceMultiplier: CHALLENGE_ATTACK_CADENCE_MULTIPLIER
+    });
+
+    if (boss) {
+        if (!Array.isArray(boss.bullets)) {
+            boss.bullets = [];
+        }
+        boss.lastAttackTime = Date.now();
+        boss.challengeAttackCadenceMultiplier = CHALLENGE_ATTACK_CADENCE_MULTIPLIER;
+    }
+}
+
+function returnToMenu() {
+    cleanupRun();
+    resetChallengeState();
+    currentGameMode = GAME_MODES.NORMAL;
+    bossMode = false;
+
+    initializeGame();
+    score = 0;
+    scoreElement.textContent = `分数: ${score}`;
+    resetChallengePanels();
+
+    const gameOverPanel = document.getElementById('game-over');
+    if (gameOverPanel) {
+        gameOverPanel.style.display = 'none';
+    }
+
+    setGameState(GAME_STATES.MENU);
+    updateGameUIDisplays();
+}
+
 // --- 游戏启动 ---
 initializeGame(); // 初始化游戏数据
 renderUpgradePanel(); // 初始渲染一次强化面板，确保按钮事件绑定
+setGameState(GAME_STATES.MENU);
 // 游戏将在点击开始按钮或重新开始按钮时启动
 
 // 更新玩家飞机图像
@@ -3780,19 +4047,9 @@ function updateGoldenFighterStatus() {
 function startNormalMode() {
     const gameOverPanel = document.getElementById('game-over');
     if (gameOverPanel) gameOverPanel.style.display = 'none';
-    currentGameMode = GAME_MODES.NORMAL;
-    bossMode = false;
-    clearChallengeEnragePatterns();
-    challengeState = CHALLENGE_STATES.INACTIVE;
-    challengeSelectedBossType = null;
-    challengeStartTime = 0;
-    challengeEnrageStartTime = 0;
-    challengeTimerRemaining = 0;
-    challengeResultData = null;
+
+    resetGlobalStateForNewRun(GAME_MODES.NORMAL);
     resetChallengePanels();
-    if (challengeRulesPanel) challengeRulesPanel.style.display = 'none';
-    initializeGame();
-    isGamePaused = false;
     startEnemyCreation();
     gameLoopRequestId = requestAnimationFrame(gameLoop);
 }
@@ -3800,35 +4057,16 @@ function startNormalMode() {
 function startChallengeMode() {
     const gameOverPanel = document.getElementById('game-over');
     if (gameOverPanel) gameOverPanel.style.display = 'none';
-    currentGameMode = GAME_MODES.CHALLENGE;
-    bossMode = false;
-    clearChallengeEnragePatterns();
-    challengeState = CHALLENGE_STATES.FIGHT;
-    challengeResultData = null;
-    challengeTimerRemaining = 0;
-    challengeStartTime = Date.now();
-    challengeEnrageStartTime = 0;
+
+    const existingBossType = challengeSelectedBossType;
+
+    resetGlobalStateForNewRun(GAME_MODES.CHALLENGE);
     resetChallengePanels();
-    if (challengeRulesPanel) challengeRulesPanel.style.display = 'none';
-    initializeGame();
-    isGamePaused = false;
     clearInterval(enemyInterval);
-
-    const possibleBosses = ['boss1', 'boss2', 'boss3'];
-    challengeSelectedBossType = possibleBosses[Math.floor(Math.random() * possibleBosses.length)];
-    createBoss({
-        forcedType: challengeSelectedBossType,
-        healthMultiplier: CHALLENGE_BOSS_HP_MULTIPLIER,
-        attackIntervalFactor: 1 / CHALLENGE_ATTACK_CADENCE_MULTIPLIER,
-        challengeAttackCadenceMultiplier: CHALLENGE_ATTACK_CADENCE_MULTIPLIER
-    });
-
-    if (boss) {
-        challengeSelectedBossType = boss.type;
-        boss.lastAttackTime = Date.now();
-        boss.challengeAttackCadenceMultiplier = CHALLENGE_ATTACK_CADENCE_MULTIPLIER;
+    if (existingBossType) {
+        challengeSelectedBossType = existingBossType;
     }
-
+    spawnChallengeBoss();
     gameLoopRequestId = requestAnimationFrame(gameLoop);
 }
 
@@ -3843,7 +4081,6 @@ function restartGame() {
 }
 
 // 绑定开始和重新开始按钮事件
-const startButton = document.getElementById('start-button');
 if (startButton) {
     startButton.style.display = 'block';
     startButton.addEventListener('click', () => {
@@ -3854,9 +4091,12 @@ if (startButton) {
     });
 }
 
-const restartButton = document.getElementById('restart-button');
 if (restartButton) {
     restartButton.addEventListener('click', restartGame);
+}
+
+if (returnToMenuButton) {
+    returnToMenuButton.addEventListener('click', returnToMenu);
 }
 
 if (challengeRulesPanel) {
@@ -3879,27 +4119,16 @@ function clearPowerUpsArray() {
 function startBossMode() {
     const gameOverPanel = document.getElementById('game-over');
     if (gameOverPanel) gameOverPanel.style.display = 'none';
-    currentGameMode = GAME_MODES.BOSS;
-    bossMode = true;
-    bossModeStartTime = Date.now(); // 记录模式开始时间
-    clearChallengeEnragePatterns();
-    challengeState = CHALLENGE_STATES.INACTIVE;
-    challengeSelectedBossType = null;
-    challengeStartTime = 0;
-    challengeEnrageStartTime = 0;
-    challengeTimerRemaining = 0;
-    challengeResultData = null;
+
+    resetGlobalStateForNewRun(GAME_MODES.BOSS);
     resetChallengePanels();
-    if (challengeRulesPanel) challengeRulesPanel.style.display = 'none';
-    initializeGame();
-    isGamePaused = false;
-    clearInterval(enemyInterval); // 确保不会生成普通敌人
-    createBoss(); // 立即生成Boss
+    clearInterval(enemyInterval);
+    bossModeStartTime = Date.now();
+    createBoss();
     gameLoopRequestId = requestAnimationFrame(gameLoop);
 }
 
 // 绑定Boss关按钮事件
-const bossStartButton = document.getElementById('boss-start-button');
 if (bossStartButton) {
     bossStartButton.style.display = 'block';
     bossStartButton.addEventListener('click', () => {
