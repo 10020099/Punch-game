@@ -11,6 +11,7 @@
         <div id="canvas-background"></div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
         <div id="score">分数: 0</div>
+        <div id="challenge-win-display">挑战胜场: 0</div>
         <div id="game-title">空战传奇</div>
         <div id="game-controls">
             <p>方向键: 移动</p>
@@ -22,8 +23,12 @@
         <div id="game-status"></div>
         <div id="start-button">开始游戏</div>
         <div id="boss-start-button">Boss关挑战</div>
+        <div id="challenge-start-button">挑战模式</div>
+        <div id="challenge-rules">随机Boss｜HP x100｜攻速略降｜HP清空后进入10s狂暴，存活即胜</div>
         <div id="game-over">
             <h2>游戏结束</h2>
+            <p id="challenge-result-detail" style="display:none;"></p>
+            <p id="challenge-win-count" style="display:none;"></p>
             <p>最终得分: <span id="final-score-display">0</span></p>
             <p>获得积分: <span id="earned-currency-display">0</span></p>
             <p>总积分: <span id="total-currency-display-gameover">0</span></p>
