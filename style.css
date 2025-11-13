@@ -223,6 +223,12 @@ body::before {
     font-size: 24px;
 }
 
+#challenge-result-detail,
+#challenge-win-count {
+    font-size: 24px;
+    margin: 10px 0;
+}
+
 #restart-button {
     color: #FFFFFF;
     font-size: 24px;
@@ -515,6 +521,58 @@ body::before {
     z-index: 3;
     animation: bossButtonPulse 2s ease infinite;
     display: none; /* 初始隐藏，JS 控制显示 */
+}
+
+#challenge-start-button {
+    position: absolute;
+    top: calc(50% + 180px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: bold;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(147, 112, 219, 0.8);
+    background: linear-gradient(145deg, #7B68EE, #6A5ACD);
+    padding: 16px 34px;
+    border-radius: 15px;
+    border: 3px solid rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    z-index: 3;
+    animation: bossButtonPulse 2.2s ease infinite;
+    display: none;
+}
+
+#challenge-rules {
+    position: absolute;
+    top: calc(50% + 240px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
+    background: rgba(45, 45, 70, 0.85);
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 2px solid rgba(147, 112, 219, 0.8);
+    z-index: 3;
+    display: none;
+}
+
+#challenge-win-display {
+    position: absolute;
+    top: 90px;
+    left: 20px;
+    color: #FFD700;
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+    padding: 8px 16px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.4);
+    display: none;
 }
 
 @keyframes bossButtonPulse {

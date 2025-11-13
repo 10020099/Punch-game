@@ -9,6 +9,11 @@ const powerUpUpgradesContainer = document.getElementById('power-up-upgrades-cont
 const playerStatUpgradesContainer = document.getElementById('player-stat-upgrades-container');
 const cheatPanel = document.getElementById('cheat-panel');
 const closeCheatPanelButton = document.getElementById('close-cheat-panel-button');
+const challengeStartButton = document.getElementById('challenge-start-button');
+const challengeRulesPanel = document.getElementById('challenge-rules');
+const challengeWinDisplay = document.getElementById('challenge-win-display');
+const challengeResultDetail = document.getElementById('challenge-result-detail');
+const challengeWinCountDisplay = document.getElementById('challenge-win-count');
 
 // 调试开关
 const DEBUG = false;
@@ -389,8 +394,35 @@ let totalCurrency = 0; // 玩家总积分（货币）
 let isGamePaused = false;
 let gameLoopRequestId;
 
+const GAME_MODES = Object.freeze({
+    NORMAL: 'NORMAL',
+    BOSS: 'BOSS',
+    CHALLENGE: 'CHALLENGE'
+});
+let currentGameMode = GAME_MODES.NORMAL;
+let bossModeStartTime = 0;
+
 // Boss关卡模式标志
 let bossMode = false; // 当为 true 时，只与Boss战斗，不生成普通敌人
+
+const CHALLENGE_BOSS_HP_MULTIPLIER = 100;
+const CHALLENGE_ATTACK_CADENCE_MULTIPLIER = 0.75;
+const CHALLENGE_ENRAGE_DURATION = 10000; // ms
+const CHALLENGE_STATES = Object.freeze({
+    INACTIVE: 'INACTIVE',
+    FIGHT: 'FIGHT',
+    ENRAGE: 'ENRAGE',
+    VICTORY: 'VICTORY',
+    DEFEAT: 'DEFEAT'
+});
+let challengeState = CHALLENGE_STATES.INACTIVE;
+let challengeTimerRemaining = 0;
+let challengeSelectedBossType = null;
+let challengeEnrageStartTime = 0;
+let challengeStartTime = 0;
+let challengeResultData = null;
+let challengeWins = parseInt(localStorage.getItem('challengeWins') || '0', 10);
+let challengeEnrageIntervals = [];
 
 // Boss模式参数调整
 const BOSS_MODE_HEALTH_MULTIPLIER = 20;
@@ -652,6 +684,7 @@ function initializeGame() {
     bossActive = false;
     boss = null;
 
+    updateGameUIDisplays();
     // ... 其他需要每局开始都初始化的玩家状态
 }
 
@@ -998,7 +1031,209 @@ function updateGameUIDisplays() {
     if (totalCurrencyDisplayGameOver) {
         totalCurrencyDisplayGameOver.textContent = totalCurrency;
     }
+
+    if (challengeWinDisplay) {
+        challengeWinDisplay.textContent = `挑战胜场: ${challengeWins}`;
+        if (challengeWins > 0 || currentGameMode === GAME_MODES.CHALLENGE) {
+            challengeWinDisplay.style.display = 'block';
+        } else {
+            challengeWinDisplay.style.display = 'none';
+        }
+    }
     // 如果有其他地方显示总积分，也在这里更新
+}
+
+function resetChallengePanels() {
+    if (challengeResultDetail) {
+        challengeResultDetail.style.display = 'none';
+        challengeResultDetail.textContent = '';
+    }
+    if (challengeWinCountDisplay) {
+        challengeWinCountDisplay.style.display = 'none';
+        challengeWinCountDisplay.textContent = '';
+    }
+}
+
+function getBossDisplayName(type) {
+    switch (type) {
+        case 'boss1':
+            return 'BOSS Ⅰ';
+        case 'boss2':
+            return 'BOSS Ⅱ';
+        case 'boss3':
+            return 'BOSS Ⅲ';
+        default:
+            return (type || '未知BOSS').toUpperCase();
+    }
+}
+
+function clearChallengeEnragePatterns() {
+    if (challengeEnrageIntervals.length > 0) {
+        challengeEnrageIntervals.forEach(intervalId => clearInterval(intervalId));
+        challengeEnrageIntervals = [];
+    }
+}
+
+function startChallengeEnragePatterns() {
+    clearChallengeEnragePatterns();
+
+    const radialInterval = setInterval(() => {
+        if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
+        const bulletCount = 20;
+        const angleOffset = (Date.now() / 320) % (Math.PI * 2);
+        const speed = 2.6;
+        for (let i = 0; i < bulletCount; i++) {
+            const angle = angleOffset + (Math.PI * 2 * i / bulletCount);
+            const bullet = getBullet();
+            bullet.x = boss.x;
+            bullet.y = boss.y;
+            bullet.width = 8;
+            bullet.height = 8;
+            bullet.dx = Math.cos(angle) * speed;
+            bullet.dy = Math.sin(angle) * speed;
+            bullet.damage = 12;
+            bullet.color = '#FF4F81';
+            bullet.hasTrail = true;
+            boss.bullets.push(bullet);
+        }
+    }, 360);
+
+    const fanInterval = setInterval(() => {
+        if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
+        const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
+        const wave = Math.sin(Date.now() / 400) * 0.25;
+        for (let i = -3; i <= 3; i++) {
+            const angle = baseAngle + i * 0.18 + wave;
+            const bullet = getBullet();
+            bullet.x = boss.x;
+            bullet.y = boss.y + boss.height / 2;
+            bullet.width = 10;
+            bullet.height = 10;
+            bullet.dx = Math.cos(angle) * 3.1;
+            bullet.dy = Math.sin(angle) * 3.1;
+            bullet.damage = 15;
+            bullet.color = '#FFA94D';
+            boss.bullets.push(bullet);
+        }
+    }, 1100);
+
+    const rainInterval = setInterval(() => {
+        if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
+        const columns = 6;
+        const spacing = canvas.width / (columns + 1);
+        for (let i = 0; i < columns; i++) {
+            const bullet = getBullet();
+            bullet.x = spacing * (i + 1);
+            bullet.y = boss.y + boss.height / 2;
+            bullet.width = 12;
+            bullet.height = 12;
+            bullet.dx = Math.sin((Date.now() / 320) + i) * 0.8;
+            bullet.dy = 3 + Math.random() * 1.2;
+            bullet.damage = 14;
+            bullet.color = '#8CF0FF';
+            boss.bullets.push(bullet);
+        }
+    }, 1400);
+
+    challengeEnrageIntervals.push(radialInterval, fanInterval, rainInterval);
+}
+
+function enterChallengeEnragePhase() {
+    if (!boss) return;
+
+    challengeState = CHALLENGE_STATES.ENRAGE;
+    challengeTimerRemaining = CHALLENGE_ENRAGE_DURATION;
+    challengeEnrageStartTime = Date.now();
+    boss.isInvulnerable = true;
+    boss.enragePhase = true;
+    boss.attackCooldown = true;
+    boss.lastAttackTime = Date.now();
+    boss.attackInterval = Infinity;
+    boss.shield = 0;
+
+    boss.bullets.forEach(releaseBullet);
+    boss.bullets = [];
+
+    createParticles(boss.x, boss.y, 70, {
+        color: '#FF335A',
+        size: 6,
+        speed: 6,
+        life: 1400,
+        spread: Math.PI * 2
+    });
+    addScreenShake(15, 500);
+    addScreenFlash(0.4, 200);
+
+    startChallengeEnragePatterns();
+    debugLog('Challenge Mode: Enrage phase started');
+}
+
+function completeChallengeVictory() {
+    if (challengeState === CHALLENGE_STATES.VICTORY) return;
+
+    challengeState = CHALLENGE_STATES.VICTORY;
+    clearChallengeEnragePatterns();
+    challengeTimerRemaining = 0;
+
+    const survivalSeconds = ((Date.now() - challengeStartTime) / 1000).toFixed(1);
+    const bossType = challengeSelectedBossType || (boss && boss.type);
+
+    if (boss) {
+        createParticles(boss.x, boss.y, 90, {
+            color: '#FFD700',
+            size: 7,
+            speed: 7,
+            life: 1600,
+            spread: Math.PI * 2
+        });
+        addScreenShake(20, 600);
+        addScreenFlash(0.5, 260);
+        boss.bullets.forEach(releaseBullet);
+        boss.bullets = [];
+    }
+
+    challengeWins += 1;
+    localStorage.setItem('challengeWins', challengeWins);
+    updateGameUIDisplays();
+
+    challengeResultData = {
+        result: 'victory',
+        bossType,
+        survivalSeconds
+    };
+
+    bossActive = false;
+    if (boss) {
+        boss = null;
+    }
+
+    gameOver();
+}
+
+function handleChallengeDefeat() {
+    if (challengeState === CHALLENGE_STATES.DEFEAT || challengeState === CHALLENGE_STATES.VICTORY) return;
+
+    challengeState = CHALLENGE_STATES.DEFEAT;
+    clearChallengeEnragePatterns();
+    challengeTimerRemaining = 0;
+
+    const survivalSeconds = ((Date.now() - challengeStartTime) / 1000).toFixed(1);
+    const bossType = challengeSelectedBossType || (boss && boss.type);
+
+    if (boss) {
+        boss.isInvulnerable = false;
+        boss.bullets.forEach(releaseBullet);
+        boss.bullets = [];
+    }
+
+    challengeResultData = {
+        result: 'defeat',
+        bossType,
+        survivalSeconds
+    };
+
+    bossActive = false;
+    gameOver();
 }
 
 
@@ -1041,82 +1276,125 @@ function createEnemy() {
     }
 }
 
-function createBoss() {
-    enemies = []; // 清除所有普通敌人
-    let bossType;
+function createBoss(options = {}) {
+    enemies = [];
+    const {
+        forcedType,
+        healthMultiplier,
+        shieldMultiplier,
+        attackIntervalFactor,
+        bulletSpeedFactor,
+        challengeAttackCadenceMultiplier
+    } = options;
+
+    let bossType = forcedType;
     let currentShield;
     let currentHealth;
     let bossImg;
     const bossWidth = 200;
     const bossHeight = 150;
 
-    const randomValue = Math.random();
-    debugLog(`Boss选择随机值: ${randomValue}`);
+    const applyBossStats = (type) => {
+        switch (type) {
+            case 'boss1':
+                currentShield = baseBossShield * (1 + 0.1 * bossSpawnCount);
+                currentHealth = baseBossHealth * (1 + 0.1 * bossSpawnCount);
+                bossImg = bossImage;
+                return true;
+            case 'boss2':
+                currentShield = (baseBossShield * (1 + 0.1 * boss2SpawnCount)) * 2;
+                currentHealth = (baseBossHealth * (1 + 0.1 * boss2SpawnCount)) * 2;
+                bossImg = bossImage2;
+                return true;
+            case 'boss3':
+                currentShield = (baseBossShield * (1 + 0.1 * boss3SpawnCount)) * 2.5;
+                currentHealth = (baseBossHealth * (1 + 0.1 * boss3SpawnCount)) * 2.5;
+                bossImg = bossImage3;
+                return true;
+            default:
+                return false;
+        }
+    };
 
-    if (randomValue < 0.33) {
-        // Boss 1 (Original)
-        bossType = 'boss1';
-        currentShield = baseBossShield * (1 + 0.1 * bossSpawnCount);
-        currentHealth = baseBossHealth * (1 + 0.1 * bossSpawnCount);
-        bossImg = bossImage;
-        debugLog('选择了Boss 1');
-    } else if (randomValue < 0.66) {
-        // Boss 2
-        bossType = 'boss2';
-        currentShield = (baseBossShield * (1 + 0.1 * boss2SpawnCount)) * 2;
-        currentHealth = (baseBossHealth * (1 + 0.1 * boss2SpawnCount)) * 2;
-        bossImg = bossImage2;
-        debugLog('选择了Boss 2');
+    if (!applyBossStats(bossType)) {
+        const randomValue = Math.random();
+        debugLog(`Boss选择随机值: ${randomValue}`);
+        if (randomValue < 0.33) {
+            bossType = 'boss1';
+        } else if (randomValue < 0.66) {
+            bossType = 'boss2';
+        } else {
+            bossType = 'boss3';
+        }
+        applyBossStats(bossType);
+        debugLog(`选择了Boss ${bossType}`);
     } else {
-        // Boss 3 - 地狱主题
-        bossType = 'boss3';
-        currentShield = (baseBossShield * (1 + 0.1 * boss3SpawnCount)) * 2.5; // 更强的护盾
-        currentHealth = (baseBossHealth * (1 + 0.1 * boss3SpawnCount)) * 2.5; // 更强的血量
-        bossImg = bossImage3;
-        debugLog('选择了Boss 3 - 地狱主题');
+        debugLog(`强制选择Boss: ${bossType}`);
     }
 
-    // 如果处于 Boss 模式，放大血量
+    const baseHealthBeforeMode = currentHealth;
+    const baseShieldBeforeMode = currentShield;
+
     if (bossMode) {
         currentHealth *= BOSS_MODE_HEALTH_MULTIPLIER;
     }
 
+    if (typeof healthMultiplier === 'number' && !Number.isNaN(healthMultiplier)) {
+        currentHealth = Math.max(1, Math.round(currentHealth * healthMultiplier));
+    }
+
+    if (typeof shieldMultiplier === 'number' && !Number.isNaN(shieldMultiplier)) {
+        currentShield = Math.max(0, Math.round(currentShield * shieldMultiplier));
+    }
+
     const baseAttackInterval = 3000;
-    const initialAttackInterval = baseAttackInterval * (bossMode ? BOSS_MODE_INITIAL_ATTACK_INTERVAL_FACTOR : 1);
+    let intervalFactor = bossMode ? BOSS_MODE_INITIAL_ATTACK_INTERVAL_FACTOR : 1;
+    if (typeof attackIntervalFactor === 'number' && !Number.isNaN(attackIntervalFactor)) {
+        intervalFactor = attackIntervalFactor;
+    }
+    const initialAttackInterval = baseAttackInterval * intervalFactor;
+
+    let effectiveBulletSpeedFactor = bossMode ? BOSS_MODE_BULLET_SPEED_FACTOR : 1;
+    if (typeof bulletSpeedFactor === 'number' && !Number.isNaN(bulletSpeedFactor)) {
+        effectiveBulletSpeedFactor = bulletSpeedFactor;
+    }
 
     boss = {
         type: bossType,
         x: canvas.width / 2,
-        y: 150, // Boss初始Y位置
-        width: bossWidth, // Boss宽度
-        height: bossHeight, // Boss高度
-        speed: 0.5, // Boss移动速度
+        y: 150,
+        width: bossWidth,
+        height: bossHeight,
+        speed: 0.5,
         shield: currentShield,
         health: currentHealth,
-        maxShield: currentShield, // 存储最大护盾值
-        maxHealth: currentHealth, // 存储最大健康值
+        maxShield: currentShield,
+        maxHealth: currentHealth,
         image: bossImg,
-        dx: Math.random() < 0.5 ? -1 : 1, // 初始移动方向
+        dx: Math.random() < 0.5 ? -1 : 1,
         bullets: [],
         lastAttackTime: 0,
         attackInterval: initialAttackInterval,
-        baseAttackInterval: baseAttackInterval,
-        currentAttackType: 0, // 0: 螺旋弹幕, 1: 追踪弹, 2: 圆形扩散
-        attackCooldown: false, // 攻击冷却状态
-        bulletSpeedFactor: bossMode ? BOSS_MODE_BULLET_SPEED_FACTOR : 1,
-        // 特效相关属性
+        baseAttackInterval,
+        attackIntervalFactor: intervalFactor,
+        currentAttackType: 0,
+        attackCooldown: false,
+        bulletSpeedFactor: effectiveBulletSpeedFactor,
         spawnTime: Date.now(),
         isSpawning: true,
-        spawnDuration: 2000, // 出现动画持续2秒
+        spawnDuration: 2000,
         energyRingRotation: 0,
         damageFlashTime: 0,
         chargingAttack: false,
-        chargeStartTime: 0
+        chargeStartTime: 0,
+        isInvulnerable: false,
+        baseHealthBeforeMode,
+        baseShieldBeforeMode,
+        challengeAttackCadenceMultiplier: challengeAttackCadenceMultiplier || 1
     };
     bossActive = true;
-    clearInterval(enemyInterval); // 停止生成普通敌人
+    clearInterval(enemyInterval);
 
-    // Boss出现特效
     createBossSpawnEffects();
 
     let spawnCountForLog;
@@ -1127,7 +1405,7 @@ function createBoss() {
     } else if (boss.type === 'boss3') {
         spawnCountForLog = boss3SpawnCount;
     }
-    debugLog(`Boss (${boss.type})出现了! 第 ${spawnCountForLog} 次 (scaling based on previous defeats). 护盾: ${boss.shield}, 血量: ${boss.health}`);
+    debugLog(`Boss (${boss.type})出现了! 第 ${spawnCountForLog} 次. 护盾: ${boss.shield}, 血量: ${boss.health} (基础血量: ${baseHealthBeforeMode})`);
 }
 
 // Boss出现特效
@@ -1827,9 +2105,11 @@ function update() {
     damageNumbers.update(deltaTime); // 更新伤害数字
 
     // Boss模式下按总体游玩时间调整攻击间隔（每帧检查）
-    updateBossAttackInterval();
-    // Boss 生成逻辑
-    if (scoreForBossTrigger >= nextBossScore && !bossActive) { // 使用 scoreForBossTrigger 判断
+    if (bossMode) {
+        updateBossAttackInterval();
+    }
+    // Boss 生成逻辑仅在普通模式下生效
+    if (currentGameMode === GAME_MODES.NORMAL && scoreForBossTrigger >= nextBossScore && !bossActive) {
         createBoss();
     }
 
@@ -1856,6 +2136,15 @@ function update() {
 
     // 玩家自动攻击
     const currentTime = Date.now();
+    if (currentGameMode === GAME_MODES.CHALLENGE && challengeState === CHALLENGE_STATES.ENRAGE) {
+        challengeTimerRemaining = Math.max(0, challengeTimerRemaining - deltaTime);
+        if (challengeTimerRemaining <= 0) {
+            completeChallengeVictory();
+            if (isGamePaused) {
+                return;
+            }
+        }
+    }
     if (currentTime - player.lastAttackTime > player.currentAttackSpeed) { // 使用 currentAttackSpeed
         if (player.isDoubleShotActive) {
             let bullet = getBullet();
@@ -1986,6 +2275,17 @@ function update() {
                         
                         player.bullets.splice(j, 1);
                         releaseBullet(bullet);
+
+                        if (boss.isInvulnerable) {
+                            createParticles(boss.x, boss.y, 6, {
+                                color: '#FF66CC',
+                                size: 3,
+                                speed: 4,
+                                life: 300,
+                                spread: Math.PI * 2
+                            });
+                            break;
+                        }
                         
                         // 计算伤害
                         const baseDamage = Math.floor(player.bulletDamage * 10);
@@ -2071,64 +2371,70 @@ function update() {
         }
 
         if (boss && boss.health <= 0) {
-            // Boss死亡爆炸特效
-            createParticles(boss.x, boss.y, 50, {
-                color: '#FFD700',
-                size: 8,
-                speed: 8,
-                life: 2000,
-                spread: Math.PI * 2
-            });
-            createParticles(boss.x, boss.y, 30, {
-                color: '#FF4500',
-                size: 12,
-                speed: 6,
-                life: 1500,
-                spread: Math.PI * 2
-            });
-            addScreenShake(20, 800);
-            addScreenFlash(0.5, 300);
-
-            let bossKillScore = 500; // Base score for defeating a boss
-            // Adjust score based on which boss and its spawn count (difficulty)
-            if (boss.type === 'boss1') {
-                bossKillScore += (bossSpawnCount) * 100; // bossSpawnCount already reflects current encounter's level due to createBoss logic
-            } else if (boss.type === 'boss2') {
-                bossKillScore += (boss2SpawnCount) * 150; // Boss 2 might be worth more
-            } else if (boss.type === 'boss3') {
-                bossKillScore += (boss3SpawnCount) * 200; // Boss 3 地狱主题，价值最高
-            }
-
-            if (player.isScoreMultiplierActive) bossKillScore *= 2;
-            score += bossKillScore; // 总分增加
-            scoreElement.textContent = `分数: ${score}`;
-
-            const defeatedBossType = boss.type; // Store type before boss is nulled
-            bossActive = false;
-            boss = null;
-
-            // Increment defeat counters for scaling next appearance
-            if (defeatedBossType === 'boss1') {
-                bossSpawnCount++;
-                debugLog(`Boss 1 defeated. Boss 1 appearance count for next scaling: ${bossSpawnCount}`);
-            } else if (defeatedBossType === 'boss2') {
-                boss2SpawnCount++;
-                debugLog(`Boss 2 defeated. Boss 2 appearance count for next scaling: ${boss2SpawnCount}`);
-            } else if (defeatedBossType === 'boss3') {
-                boss3SpawnCount++;
-                debugLog(`Boss 3 defeated. Boss 3 appearance count for next scaling: ${boss3SpawnCount}`);
-            }
-            
-            nextBossScore += scoreForBoss; 
-            debugLog(`Boss (${defeatedBossType}) 被击败! Next Boss score trigger: ${nextBossScore}. Total score: ${score}, Boss trigger score: ${scoreForBossTrigger}`);
-
-            if (bossMode) {
-                // Boss模式：2秒后生成下一只Boss，形成连续Boss战
-                setTimeout(() => {
-                    if (!isGamePaused) createBoss();
-                }, 2000);
+            if (currentGameMode === GAME_MODES.CHALLENGE) {
+                if (challengeState === CHALLENGE_STATES.FIGHT) {
+                    enterChallengeEnragePhase();
+                }
             } else {
-                startEnemyCreation(); 
+                // Boss死亡爆炸特效
+                createParticles(boss.x, boss.y, 50, {
+                    color: '#FFD700',
+                    size: 8,
+                    speed: 8,
+                    life: 2000,
+                    spread: Math.PI * 2
+                });
+                createParticles(boss.x, boss.y, 30, {
+                    color: '#FF4500',
+                    size: 12,
+                    speed: 6,
+                    life: 1500,
+                    spread: Math.PI * 2
+                });
+                addScreenShake(20, 800);
+                addScreenFlash(0.5, 300);
+
+                let bossKillScore = 500; // Base score for defeating a boss
+                // Adjust score based on which boss and its spawn count (difficulty)
+                if (boss.type === 'boss1') {
+                    bossKillScore += (bossSpawnCount) * 100; // bossSpawnCount already reflects current encounter's level due to createBoss logic
+                } else if (boss.type === 'boss2') {
+                    bossKillScore += (boss2SpawnCount) * 150; // Boss 2 might be worth more
+                } else if (boss.type === 'boss3') {
+                    bossKillScore += (boss3SpawnCount) * 200; // Boss 3 地狱主题，价值最高
+                }
+
+                if (player.isScoreMultiplierActive) bossKillScore *= 2;
+                score += bossKillScore; // 总分增加
+                scoreElement.textContent = `分数: ${score}`;
+
+                const defeatedBossType = boss.type; // Store type before boss is nulled
+                bossActive = false;
+                boss = null;
+
+                // Increment defeat counters for scaling next appearance
+                if (defeatedBossType === 'boss1') {
+                    bossSpawnCount++;
+                    debugLog(`Boss 1 defeated. Boss 1 appearance count for next scaling: ${bossSpawnCount}`);
+                } else if (defeatedBossType === 'boss2') {
+                    boss2SpawnCount++;
+                    debugLog(`Boss 2 defeated. Boss 2 appearance count for next scaling: ${boss2SpawnCount}`);
+                } else if (defeatedBossType === 'boss3') {
+                    boss3SpawnCount++;
+                    debugLog(`Boss 3 defeated. Boss 3 appearance count for next scaling: ${boss3SpawnCount}`);
+                }
+                
+                nextBossScore += scoreForBoss; 
+                debugLog(`Boss (${defeatedBossType}) 被击败! Next Boss score trigger: ${nextBossScore}. Total score: ${score}, Boss trigger score: ${scoreForBossTrigger}`);
+
+                if (bossMode) {
+                    // Boss模式：2秒后生成下一只Boss，形成连续Boss战
+                    setTimeout(() => {
+                        if (!isGamePaused) createBoss();
+                    }, 2000);
+                } else {
+                    startEnemyCreation(); 
+                }
             }
         }
 
@@ -2142,7 +2448,8 @@ function update() {
         }
 
         // Boss 攻击逻辑 - 使用三种新的攻击模式
-        if (boss && currentTime - boss.lastAttackTime > boss.attackInterval && !boss.attackCooldown) {
+        const challengeEnrageActive = currentGameMode === GAME_MODES.CHALLENGE && challengeState === CHALLENGE_STATES.ENRAGE;
+        if (boss && !challengeEnrageActive && currentTime - boss.lastAttackTime > boss.attackInterval && !boss.attackCooldown) {
             // 根据 Boss 类型选择专属攻击
             boss.currentAttackType = Math.floor(Math.random() * 3);
             if (boss.type === 'boss1') {
@@ -2416,12 +2723,23 @@ function handlePlayerHit(damage) {
             debugLog(`玩家护盾受损: ${player.shield}`);
         }
     } else {
-        gameOver();
+        if (currentGameMode === GAME_MODES.CHALLENGE) {
+            handleChallengeDefeat();
+        } else {
+            gameOver();
+        }
     }
 }
 
 
 function gameOver() {
+    clearChallengeEnragePatterns();
+    challengeTimerRemaining = 0;
+    challengeEnrageStartTime = 0;
+    const isChallengeMode = currentGameMode === GAME_MODES.CHALLENGE;
+    const resultData = challengeResultData;
+    const wasVictory = isChallengeMode && resultData && resultData.result === 'victory';
+
     // 暂停游戏循环并清理计时器
     isGamePaused = true;
     cancelAnimationFrame(gameLoopRequestId);
@@ -2439,11 +2757,48 @@ function gameOver() {
     localStorage.setItem('boss3SpawnCount', boss3SpawnCount);
     debugLog(`Saved Boss 3 defeat count: ${boss3SpawnCount}`);
 
-    // alert(`游戏结束！\n本局得分: ${score}\n获得积分: ${earnedCurrency}\n总积分: ${totalCurrency}`);
-    document.getElementById('final-score-display').textContent = score;
-    document.getElementById('earned-currency-display').textContent = earnedCurrency;
-    document.getElementById('total-currency-display-gameover').textContent = totalCurrency;
-    document.getElementById('game-over').style.display = 'block'; // 显示游戏结束面板
+    const finalScoreEl = document.getElementById('final-score-display');
+    if (finalScoreEl) finalScoreEl.textContent = score;
+    const earnedCurrencyEl = document.getElementById('earned-currency-display');
+    if (earnedCurrencyEl) earnedCurrencyEl.textContent = earnedCurrency;
+    const totalCurrencyGameOverEl = document.getElementById('total-currency-display-gameover');
+    if (totalCurrencyGameOverEl) totalCurrencyGameOverEl.textContent = totalCurrency;
+
+    const gameOverPanel = document.getElementById('game-over');
+    if (gameOverPanel) {
+        const titleEl = gameOverPanel.querySelector('h2');
+        if (titleEl) {
+            if (isChallengeMode) {
+                titleEl.textContent = wasVictory ? '挑战胜利' : '挑战失败';
+            } else {
+                titleEl.textContent = '游戏结束';
+            }
+        }
+        gameOverPanel.style.display = 'block';
+    }
+
+    if (challengeResultDetail) {
+        if (isChallengeMode && resultData) {
+            const bossName = getBossDisplayName(resultData.bossType);
+            challengeResultDetail.textContent = `Boss: ${bossName} ｜ 存活时间: ${resultData.survivalSeconds}s`;
+            challengeResultDetail.style.color = wasVictory ? '#FFD700' : '#FF6666';
+            challengeResultDetail.style.display = 'block';
+        } else {
+            challengeResultDetail.style.display = 'none';
+            challengeResultDetail.textContent = '';
+        }
+    }
+
+    if (challengeWinCountDisplay) {
+        if (isChallengeMode) {
+            challengeWinCountDisplay.textContent = `累计胜场: ${challengeWins}`;
+            challengeWinCountDisplay.style.color = '#FFD700';
+            challengeWinCountDisplay.style.display = 'block';
+        } else {
+            challengeWinCountDisplay.style.display = 'none';
+            challengeWinCountDisplay.textContent = '';
+        }
+    }
     
     score = 0;
     scoreElement.textContent = `分数: ${score}`;
@@ -2482,6 +2837,14 @@ function gameOver() {
     clearPowerUpsArray(); // 清空屏幕上的道具并释放对象
     lastPowerUpSpawnTime = 0; // 重置道具生成计时
     scoreForBossTrigger = 0; // 重置用于触发Boss的分数
+
+    if (isChallengeMode) {
+        challengeState = CHALLENGE_STATES.INACTIVE;
+        challengeSelectedBossType = null;
+        challengeStartTime = 0;
+    }
+    challengeResultData = null;
+    updateGameUIDisplays();
 }
 
 function draw() {
@@ -2797,6 +3160,16 @@ function draw() {
             ctx.restore();
         }
 
+        if (currentGameMode === GAME_MODES.CHALLENGE && challengeState === CHALLENGE_STATES.ENRAGE) {
+            ctx.save();
+            ctx.globalAlpha = 0.35 + 0.15 * Math.sin(Date.now() / 120);
+            ctx.fillStyle = '#FF2D55';
+            ctx.beginPath();
+            ctx.arc(boss.x, boss.y, boss.width / 2 + 60, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
         if (boss.isSpawning && Date.now() - boss.spawnTime < boss.spawnDuration) {
             ctx.restore();
         }
@@ -2978,6 +3351,32 @@ function draw() {
         ctx.fill();
     }
 
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '20px Arial';
+        const headerText = challengeState === CHALLENGE_STATES.ENRAGE ? '挑战模式 - 狂暴生存' : '挑战模式 - 孤胆Boss战';
+        ctx.fillText(headerText, canvas.width / 2, 30);
+
+        if (challengeState === CHALLENGE_STATES.ENRAGE) {
+            ctx.fillStyle = '#FF6666';
+            ctx.font = '28px Arial';
+            ctx.fillText(`存活倒计时 ${ (challengeTimerRemaining / 1000).toFixed(1) }s`, canvas.width / 2, 65);
+        } else if (boss) {
+            ctx.fillStyle = '#FFD700';
+            ctx.font = '16px Arial';
+            ctx.fillText(`目标: 击败 ${getBossDisplayName(boss.type)} 引出狂暴!`, canvas.width / 2, 65);
+        }
+
+        if (challengeWins > 0) {
+            ctx.fillStyle = '#FFD700';
+            ctx.font = '16px Arial';
+            ctx.fillText(`累计胜场: ${challengeWins}`, canvas.width / 2, 90);
+        }
+        ctx.restore();
+    }
+
     // 绘制道具
     drawPowerUps();
     // 绘制激活的道具状态
@@ -3031,6 +3430,9 @@ function createPowerUp() {
 }
 
 function updatePowerUps(currentTime) {
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        return;
+    }
     for (let i = powerUps.length - 1; i >= 0; i--) {
         let p = powerUps[i];
         p.y += p.speed;
@@ -3053,6 +3455,9 @@ function updatePowerUps(currentTime) {
 }
 
 function spawnPowerUps(currentTime) {
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        return;
+    }
     if (currentTime - lastPowerUpSpawnTime > powerUpSpawnInterval) {
         createPowerUp();
         lastPowerUpSpawnTime = currentTime;
@@ -3168,6 +3573,9 @@ function checkActivePowerUps(currentTime) {
 }
 
 function drawPowerUps() {
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        return;
+    }
     for (let p of powerUps) {
         if (p.color === 'rainbow') {
             // 为超级组合道具绘制彩色渐变
@@ -3197,6 +3605,9 @@ function drawPowerUps() {
 }
 
 function drawActivePowerUpStatus() {
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        return;
+    }
     ctx.fillStyle = 'white';
     ctx.font = '14px Arial';
     ctx.textAlign = 'left';
@@ -3366,14 +3777,69 @@ function updateGoldenFighterStatus() {
     }
 }
 
-// 重新开始游戏
-function restartGame() {
-    document.getElementById('game-over').style.display = 'none';
+function startNormalMode() {
+    const gameOverPanel = document.getElementById('game-over');
+    if (gameOverPanel) gameOverPanel.style.display = 'none';
+    currentGameMode = GAME_MODES.NORMAL;
+    bossMode = false;
+    clearChallengeEnragePatterns();
+    challengeState = CHALLENGE_STATES.INACTIVE;
+    challengeSelectedBossType = null;
+    challengeStartTime = 0;
+    challengeEnrageStartTime = 0;
+    challengeTimerRemaining = 0;
+    challengeResultData = null;
+    resetChallengePanels();
+    if (challengeRulesPanel) challengeRulesPanel.style.display = 'none';
     initializeGame();
     isGamePaused = false;
     startEnemyCreation();
     gameLoopRequestId = requestAnimationFrame(gameLoop);
-    bossMode = false; // 重置为普通模式
+}
+
+function startChallengeMode() {
+    const gameOverPanel = document.getElementById('game-over');
+    if (gameOverPanel) gameOverPanel.style.display = 'none';
+    currentGameMode = GAME_MODES.CHALLENGE;
+    bossMode = false;
+    clearChallengeEnragePatterns();
+    challengeState = CHALLENGE_STATES.FIGHT;
+    challengeResultData = null;
+    challengeTimerRemaining = 0;
+    challengeStartTime = Date.now();
+    challengeEnrageStartTime = 0;
+    resetChallengePanels();
+    if (challengeRulesPanel) challengeRulesPanel.style.display = 'none';
+    initializeGame();
+    isGamePaused = false;
+    clearInterval(enemyInterval);
+
+    const possibleBosses = ['boss1', 'boss2', 'boss3'];
+    challengeSelectedBossType = possibleBosses[Math.floor(Math.random() * possibleBosses.length)];
+    createBoss({
+        forcedType: challengeSelectedBossType,
+        healthMultiplier: CHALLENGE_BOSS_HP_MULTIPLIER,
+        attackIntervalFactor: 1 / CHALLENGE_ATTACK_CADENCE_MULTIPLIER,
+        challengeAttackCadenceMultiplier: CHALLENGE_ATTACK_CADENCE_MULTIPLIER
+    });
+
+    if (boss) {
+        challengeSelectedBossType = boss.type;
+        boss.lastAttackTime = Date.now();
+        boss.challengeAttackCadenceMultiplier = CHALLENGE_ATTACK_CADENCE_MULTIPLIER;
+    }
+
+    gameLoopRequestId = requestAnimationFrame(gameLoop);
+}
+
+function restartGame() {
+    if (currentGameMode === GAME_MODES.BOSS) {
+        startBossMode();
+    } else if (currentGameMode === GAME_MODES.CHALLENGE) {
+        startChallengeMode();
+    } else {
+        startNormalMode();
+    }
 }
 
 // 绑定开始和重新开始按钮事件
@@ -3383,13 +3849,18 @@ if (startButton) {
     startButton.addEventListener('click', () => {
         startButton.style.display = 'none';
         if (bossStartButton) bossStartButton.style.display = 'none';
-        restartGame();
+        if (challengeStartButton) challengeStartButton.style.display = 'none';
+        startNormalMode();
     });
 }
 
 const restartButton = document.getElementById('restart-button');
 if (restartButton) {
     restartButton.addEventListener('click', restartGame);
+}
+
+if (challengeRulesPanel) {
+    challengeRulesPanel.style.display = 'block';
 }
 
 // ---------------------------------------------------------------------------
@@ -3406,9 +3877,20 @@ function clearPowerUpsArray() {
 
 // Boss模式启动函数
 function startBossMode() {
-    document.getElementById('game-over').style.display = 'none';
+    const gameOverPanel = document.getElementById('game-over');
+    if (gameOverPanel) gameOverPanel.style.display = 'none';
+    currentGameMode = GAME_MODES.BOSS;
     bossMode = true;
     bossModeStartTime = Date.now(); // 记录模式开始时间
+    clearChallengeEnragePatterns();
+    challengeState = CHALLENGE_STATES.INACTIVE;
+    challengeSelectedBossType = null;
+    challengeStartTime = 0;
+    challengeEnrageStartTime = 0;
+    challengeTimerRemaining = 0;
+    challengeResultData = null;
+    resetChallengePanels();
+    if (challengeRulesPanel) challengeRulesPanel.style.display = 'none';
     initializeGame();
     isGamePaused = false;
     clearInterval(enemyInterval); // 确保不会生成普通敌人
@@ -3421,10 +3903,20 @@ const bossStartButton = document.getElementById('boss-start-button');
 if (bossStartButton) {
     bossStartButton.style.display = 'block';
     bossStartButton.addEventListener('click', () => {
-        // 隐藏两个开始按钮，避免重复点击
         if (startButton) startButton.style.display = 'none';
         bossStartButton.style.display = 'none';
+        if (challengeStartButton) challengeStartButton.style.display = 'none';
         startBossMode();
+    });
+}
+
+if (challengeStartButton) {
+    challengeStartButton.style.display = 'block';
+    challengeStartButton.addEventListener('click', () => {
+        if (startButton) startButton.style.display = 'none';
+        if (bossStartButton) bossStartButton.style.display = 'none';
+        challengeStartButton.style.display = 'none';
+        startChallengeMode();
     });
 }
 
