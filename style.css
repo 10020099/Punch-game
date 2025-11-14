@@ -229,7 +229,9 @@ body::before {
     margin: 10px 0;
 }
 
-#restart-button {
+#restart-button,
+#return-to-menu-button,
+#open-upgrade-panel-button-gameover {
     color: #FFFFFF;
     font-size: 24px;
     font-weight: bold;
@@ -240,7 +242,14 @@ body::before {
     border: 2px solid rgba(255, 255, 255, 0.5);
     cursor: pointer;
     margin-top: 20px;
+    margin-left: auto;
+    margin-right: auto;
+    display: block;
     animation: restartButtonPulse 2s ease infinite;
+}
+
+#game-over button + button {
+    margin-top: 12px;
 }
 
 @keyframes restartButtonPulse {

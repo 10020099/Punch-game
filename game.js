@@ -463,6 +463,9 @@ function activateCheatCode(code) {
         player.isDoubleShotActive = true;
         player.currentAttackSpeed = player.baseAttackSpeed / 2;
         player.isScoreMultiplierActive = true;
+        if (currentGameMode === GAME_MODES.CHALLENGE) {
+            addInvincibilityLayer(CHEAT_EFFECT_DURATION);
+        }
         player.activePowerUps['CHEAT_SUPER_EFFECT'] = Date.now() + CHEAT_EFFECT_DURATION;
         debugLog('作弊码激活: tq456 - 临时超级组合效果 (20秒)');
         alert('作弊码激活: 临时超级组合效果 (20秒)');
@@ -471,6 +474,7 @@ function activateCheatCode(code) {
 
 // 黄金飞机系统
 const GOLDEN_FIGHTER_PRICE = 5000;  // 黄金飞机价格
+const GOLDEN_FIGHTER_SELECTION_KEY = 'isUsingGoldenFighter';
 let hasGoldenFighter = false;       // 是否拥有黄金飞机
 let isUsingGoldenFighter = false;   // 是否正在使用黄金飞机
 
@@ -481,7 +485,8 @@ const POWER_UP_TYPES = {
     DOUBLE_SHOT: 'double_shot',
     ATTACK_SPEED: 'attack_speed',
     SCORE_MULTIPLIER: 'score_multiplier',
-    SUPER_COMBO: 'super_combo'
+    SUPER_COMBO: 'super_combo',
+    CHALLENGE_INVINCIBILITY: 'challenge_invincibility'
 };
 
 // 强化等级上限 - 根据当前使用的飞机动态调整
@@ -513,6 +518,8 @@ let upgradeLevels = {
     [POWER_UP_TYPES.DOUBLE_SHOT + 'DurationLevel']: 0,
     [POWER_UP_TYPES.ATTACK_SPEED + 'DurationLevel']: 0,
     [POWER_UP_TYPES.SCORE_MULTIPLIER + 'DurationLevel']: 0,
+    [POWER_UP_TYPES.SUPER_COMBO + 'DurationLevel']: 0,
+    [POWER_UP_TYPES.CHALLENGE_INVINCIBILITY + 'DurationLevel']: 0,
     // 战机属性等级
     playerAttackSpeedLevel: 0,
     playerMaxShieldLevel: 0,
@@ -541,7 +548,9 @@ let player = {
     isScoreMultiplierActive: false,
     activePowerUps: {}, // 存储激活的道具及其结束时间
     superComboCount: 0, // 超级组合道具计数
-    isSuperComboActive: false // 超级组合道具是否永久激活
+    isSuperComboActive: false, // 超级组合道具是否永久激活
+    isInvincible: false,
+    activeInvincibilityTimers: [],
 };
 let enemies = [];
 let powerUps = []; // 存储屏幕上的道具
@@ -552,6 +561,11 @@ const POWER_UP_SIZE = 20; // 道具大小
 const POWER_UP_SPEED = 0.5; // 道具掉落速度
 let powerUpSpawnInterval = 15000; // 15秒生成一个道具 (可调整)
 let lastPowerUpSpawnTime = 0;
+
+const CHALLENGE_POWER_UP_INTERVAL = 18000;
+const CHALLENGE_POWER_UP_SPEED = 0.65;
+let challengePowerUps = [];
+let lastChallengePowerUpTime = 0;
 
 
 let boss = null;
@@ -668,7 +682,13 @@ function initializeGame() {
     // 加载黄金飞机拥有状态
     const savedHasGoldenFighter = localStorage.getItem('hasGoldenFighter');
     hasGoldenFighter = savedHasGoldenFighter === 'true';
-    isUsingGoldenFighter = false; // 每次开始游戏默认使用普通飞机
+    const savedGoldenSelection = localStorage.getItem(GOLDEN_FIGHTER_SELECTION_KEY);
+    if (savedGoldenSelection !== null) {
+        isUsingGoldenFighter = savedGoldenSelection === 'true' && hasGoldenFighter;
+    } else {
+        isUsingGoldenFighter = false;
+        localStorage.setItem(GOLDEN_FIGHTER_SELECTION_KEY, 'false');
+    }
     debugLog(`黄金飞机状态 - 拥有: ${hasGoldenFighter}, 使用中: ${isUsingGoldenFighter}`);
 
     // 根据强化等级应用属性，这也会检查特殊奖励条件
@@ -682,6 +702,8 @@ function initializeGame() {
     player.isScoreMultiplierActive = false;
     player.superComboCount = 0; // 重置超级道具计数器
     player.isSuperComboActive = false; // 重置超级道具永久激活状态
+    player.isInvincible = false;
+    player.activeInvincibilityTimers = [];
     // 重置场地Buff击杀计数
     normalFighterKillsForBuff = 0;
     goldenFighterKillsForBuff = 0;
@@ -941,6 +963,9 @@ function renderUpgradePanel() {
 
     // 渲染道具持续时间强化
     Object.values(POWER_UP_TYPES).forEach(type => {
+        if (type === POWER_UP_TYPES.SUPER_COMBO) {
+            return;
+        }
         const levelKey = type + 'DurationLevel';
         const currentLevel = upgradeLevels[levelKey];
         const cost = calculateUpgradeCost(currentLevel);
@@ -991,6 +1016,7 @@ function getPowerUpName(type) {
         case POWER_UP_TYPES.ATTACK_SPEED: return '攻速提升道具'; // 区分战机基础攻速
         case POWER_UP_TYPES.SCORE_MULTIPLIER: return '双倍积分';
         case POWER_UP_TYPES.SUPER_COMBO: return '超级组合道具';
+        case POWER_UP_TYPES.CHALLENGE_INVINCIBILITY: return '挑战无敌道具';
         default: return '未知道具';
     }
 }
@@ -1105,9 +1131,9 @@ function startChallengeEnragePatterns() {
         if (!Array.isArray(boss.bullets)) {
             boss.bullets = [];
         }
-        const bulletCount = 20;
-        const angleOffset = (Date.now() / 320) % (Math.PI * 2);
-        const speed = 2.6;
+        const bulletCount = 16;
+        const angleOffset = (Date.now() / 360) % (Math.PI * 2);
+        const speed = 2.2;
         for (let i = 0; i < bulletCount; i++) {
             const angle = angleOffset + (Math.PI * 2 * i / bulletCount);
             const bullet = getBullet();
@@ -1122,7 +1148,7 @@ function startChallengeEnragePatterns() {
             bullet.hasTrail = true;
             boss.bullets.push(bullet);
         }
-    }, 360);
+    }, 500);
 
     const fanInterval = setInterval(() => {
         if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
@@ -1130,7 +1156,7 @@ function startChallengeEnragePatterns() {
             boss.bullets = [];
         }
         const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
-        const wave = Math.sin(Date.now() / 400) * 0.25;
+        const wave = Math.sin(Date.now() / 420) * 0.22;
         for (let i = -3; i <= 3; i++) {
             const angle = baseAngle + i * 0.18 + wave;
             const bullet = getBullet();
@@ -1138,13 +1164,13 @@ function startChallengeEnragePatterns() {
             bullet.y = boss.y + boss.height / 2;
             bullet.width = 10;
             bullet.height = 10;
-            bullet.dx = Math.cos(angle) * 3.1;
-            bullet.dy = Math.sin(angle) * 3.1;
+            bullet.dx = Math.cos(angle) * 2.7;
+            bullet.dy = Math.sin(angle) * 2.7;
             bullet.damage = 15;
             bullet.color = '#FFA94D';
             boss.bullets.push(bullet);
         }
-    }, 1100);
+    }, 1500);
 
     const rainInterval = setInterval(() => {
         if (!boss || isGamePaused || challengeState !== CHALLENGE_STATES.ENRAGE) return;
@@ -1159,13 +1185,13 @@ function startChallengeEnragePatterns() {
             bullet.y = boss.y + boss.height / 2;
             bullet.width = 12;
             bullet.height = 12;
-            bullet.dx = Math.sin((Date.now() / 320) + i) * 0.8;
-            bullet.dy = 3 + Math.random() * 1.2;
+            bullet.dx = Math.sin((Date.now() / 360) + i) * 0.6;
+            bullet.dy = 2.4 + Math.random() * 0.9;
             bullet.damage = 14;
             bullet.color = '#8CF0FF';
             boss.bullets.push(bullet);
         }
-    }, 1400);
+    }, 1900);
 
     challengeEnrageIntervals.push(radialInterval, fanInterval, rainInterval);
 }
@@ -2781,6 +2807,10 @@ function update() {
 }
 
 function handlePlayerHit(damage) {
+    if (player.isInvincible) {
+        debugLog('玩家处于无敌状态，免疫伤害');
+        return;
+    }
     if (player.shield > 0) {
         // 如果护盾效率提升特殊奖励激活，每5点护盾可以抵挡一次伤害
         if (shieldEfficiencyBoost) {
@@ -3479,7 +3509,6 @@ function draw() {
     drawScreenFlash();
 }
 
-// --- 道具系统函数 ---
 function createPowerUp() {
     const types = Object.values(POWER_UP_TYPES);
     // 根据当前使用的飞机类型过滤可用道具
@@ -3489,7 +3518,15 @@ function createPowerUp() {
     if (!isUsingGoldenFighter) {
         availableTypes = availableTypes.filter(type => type !== POWER_UP_TYPES.SUPER_COMBO);
     }
-    
+
+    if (currentGameMode === GAME_MODES.CHALLENGE) {
+        // 挑战模式仅生成专属无敌道具
+        availableTypes = [POWER_UP_TYPES.CHALLENGE_INVINCIBILITY];
+    } else {
+        // 其他模式移除挑战专属无敌
+        availableTypes = availableTypes.filter(type => type !== POWER_UP_TYPES.CHALLENGE_INVINCIBILITY);
+    }
+
     const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
     let color;
     switch (type) {
@@ -3513,12 +3550,28 @@ function createPowerUp() {
     debugLog(`生成道具: ${type}${type === POWER_UP_TYPES.SUPER_COMBO ? ' (黄金飞机专属)' : ''}`);
 }
 
+function createChallengePowerUp() {
+    const p = getPowerUpObj();
+    Object.assign(p, {
+        x: Math.random() * (canvas.width - POWER_UP_SIZE),
+        y: -POWER_UP_SIZE,
+        width: POWER_UP_SIZE,
+        height: POWER_UP_SIZE,
+        type: POWER_UP_TYPES.CHALLENGE_INVINCIBILITY,
+        color: '#FFFFFF',
+        borderColor: '#B3F3FF',
+        glowColor: '#7FDBFF',
+        speed: CHALLENGE_POWER_UP_SPEED
+    });
+    challengePowerUps.push(p);
+    debugLog('挑战模式生成无敌道具');
+}
+
 function updatePowerUps(currentTime) {
-    if (currentGameMode === GAME_MODES.CHALLENGE) {
-        return;
-    }
-    for (let i = powerUps.length - 1; i >= 0; i--) {
-        let p = powerUps[i];
+    const isChallengeMode = currentGameMode === GAME_MODES.CHALLENGE;
+    const list = isChallengeMode ? challengePowerUps : powerUps;
+    for (let i = list.length - 1; i >= 0; i--) {
+        let p = list[i];
         p.y += p.speed;
 
         // 玩家拾取检测
@@ -3527,12 +3580,12 @@ function updatePowerUps(currentTime) {
             p.y < player.y + player.height / 2 &&
             p.y + p.height > player.y - player.height / 2) {
             activatePowerUp(p.type, currentTime);
-            powerUps.splice(i, 1);
+            list.splice(i, 1);
             continue;
         }
 
         if (p.y > canvas.height) {
-            powerUps.splice(i, 1);
+            list.splice(i, 1);
             releasePowerUpObj(p);            // 归还至对象池
         }
     }
@@ -3540,11 +3593,15 @@ function updatePowerUps(currentTime) {
 
 function spawnPowerUps(currentTime) {
     if (currentGameMode === GAME_MODES.CHALLENGE) {
-        return;
-    }
-    if (currentTime - lastPowerUpSpawnTime > powerUpSpawnInterval) {
-        createPowerUp();
-        lastPowerUpSpawnTime = currentTime;
+        if (currentTime - lastChallengePowerUpTime > CHALLENGE_POWER_UP_INTERVAL) {
+            createChallengePowerUp();
+            lastChallengePowerUpTime = currentTime;
+        }
+    } else {
+        if (currentTime - lastPowerUpSpawnTime > powerUpSpawnInterval) {
+            createPowerUp();
+            lastPowerUpSpawnTime = currentTime;
+        }
     }
 }
 
@@ -3579,25 +3636,35 @@ function activatePowerUp(type, currentTime) {
             break;
         case POWER_UP_TYPES.SUPER_COMBO:
             // 超级组合道具逻辑
-            player.superComboCount++;
-            
-            // 根据特殊奖励状态确定永久激活所需次数
-            const requiredCount = reducedSuperComboRequirement ? REDUCED_SUPER_COMBO_REQUIREMENT : NORMAL_SUPER_COMBO_REQUIREMENT;
-            debugLog(`超级组合道具计数: ${player.superComboCount}/${requiredCount}${reducedSuperComboRequirement ? ' (需求已降低!)' : ''}`);
-            
-            // 同时激活所有道具效果
+            const isChallengeMode = currentGameMode === GAME_MODES.CHALLENGE;
+
+            if (!isChallengeMode) {
+                player.superComboCount++;
+
+                // 根据特殊奖励状态确定永久激活所需次数
+                const requiredCount = reducedSuperComboRequirement ? REDUCED_SUPER_COMBO_REQUIREMENT : NORMAL_SUPER_COMBO_REQUIREMENT;
+                debugLog(`超级组合道具计数: ${player.superComboCount}/${requiredCount}${reducedSuperComboRequirement ? ' (需求已降低!)' : ''}`);
+
+                // 当拾取到足够次数后，永久激活组合效果
+                const canUnlockPermanent = hasGoldenFighter;
+                if (canUnlockPermanent && player.superComboCount >= requiredCount && !player.isSuperComboActive) {
+                    player.isSuperComboActive = true;
+                    debugLog(`超级组合道具效果已永久激活! (需求: ${requiredCount}次)`);
+
+                    // 移除计时器，因为效果已永久激活
+                    delete player.activePowerUps[type];
+                }
+            } else {
+                debugLog('挑战模式的超级组合仅提供本局临时效果，不计入永久激活。');
+            }
+
+            // 同时激活所有道具效果（所有模式通用）
             player.isDoubleShotActive = true;
             player.currentAttackSpeed = player.baseAttackSpeed / 2;
             player.isScoreMultiplierActive = true;
-            
-            // 当拾取到足够次数后，永久激活组合效果
-            if (player.superComboCount >= requiredCount && !player.isSuperComboActive) {
-                player.isSuperComboActive = true;
-                debugLog(`超级组合道具效果已永久激活! (需求: ${requiredCount}次)`);
-                
-                // 移除计时器，因为效果已永久激活
-                delete player.activePowerUps[type];
-            }
+            break;
+        case POWER_UP_TYPES.CHALLENGE_INVINCIBILITY:
+            addInvincibilityLayer(duration);
             break;
     }
 }
@@ -3634,11 +3701,15 @@ function deactivatePowerUp(type, silent = false) {
                 player.isScoreMultiplierActive = false;
             }
             break;
+        case POWER_UP_TYPES.CHALLENGE_INVINCIBILITY:
+            clearExpiredInvincibility();
+            break;
         case 'CHEAT_SUPER_EFFECT': // 处理作弊码效果到期
             if (!player.isSuperComboActive) { // 如果永久超级组合未激活
                 player.isDoubleShotActive = false;
                 player.currentAttackSpeed = player.baseAttackSpeed;
                 player.isScoreMultiplierActive = false;
+                clearExpiredInvincibility();
                 debugLog("作弊码超级效果结束");
             } else {
                  // 如果永久超级组合已激活，作弊码效果结束时不需要改变状态，因为永久效果优先
@@ -3654,13 +3725,13 @@ function checkActivePowerUps(currentTime) {
             deactivatePowerUp(type);
         }
     }
+    clearExpiredInvincibility();
 }
 
 function drawPowerUps() {
-    if (currentGameMode === GAME_MODES.CHALLENGE) {
-        return;
-    }
-    for (let p of powerUps) {
+    const isChallengeMode = currentGameMode === GAME_MODES.CHALLENGE;
+    const list = isChallengeMode ? challengePowerUps : powerUps;
+    for (let p of list) {
         if (p.color === 'rainbow') {
             // 为超级组合道具绘制彩色渐变
             const gradient = ctx.createLinearGradient(p.x, p.y, p.x + p.width, p.y + p.height);
@@ -3684,14 +3755,12 @@ function drawPowerUps() {
         else if (p.type === POWER_UP_TYPES.ATTACK_SPEED) text = 'SPD';
         else if (p.type === POWER_UP_TYPES.SCORE_MULTIPLIER) text = 'PTS';
         else if (p.type === POWER_UP_TYPES.SUPER_COMBO) text = 'ALL';
+        else if (p.type === POWER_UP_TYPES.CHALLENGE_INVINCIBILITY) text = 'INV';
         ctx.fillText(text, p.x + p.width / 2, p.y + p.height / 2 + 3);
     }
 }
 
 function drawActivePowerUpStatus() {
-    if (currentGameMode === GAME_MODES.CHALLENGE) {
-        return;
-    }
     ctx.fillStyle = 'white';
     ctx.font = '14px Arial';
     ctx.textAlign = 'left';
@@ -3705,7 +3774,7 @@ function drawActivePowerUpStatus() {
         ctx.fillStyle = 'white';
     } else {
         // 显示超级组合道具计数
-        if (player.superComboCount > 0) {
+        if (player.superComboCount > 0 && currentGameMode !== GAME_MODES.CHALLENGE) {
             const requiredCount = reducedSuperComboRequirement ? REDUCED_SUPER_COMBO_REQUIREMENT : NORMAL_SUPER_COMBO_REQUIREMENT;
             ctx.fillStyle = 'gold';
             ctx.fillText(`超级组合: ${player.superComboCount}/${requiredCount}${reducedSuperComboRequirement ? ' (需求已降低!)' : ''}`, 10, yOffset);
@@ -3736,6 +3805,29 @@ function drawActivePowerUpStatus() {
             yOffset -= 20; // 上移，为下一个buff留空间
         }
     });
+
+    if (player.isInvincible && player.activeInvincibilityTimers.length > 0 && !player.isSuperComboActive) {
+        const timeLeft = Math.max(0, Math.ceil((Math.max(...player.activeInvincibilityTimers) - Date.now()) / 1000));
+        ctx.fillStyle = '#7FDBFF';
+        ctx.fillText(`无敌剩余: ${timeLeft}s`, 10, yOffset);
+        yOffset -= 20;
+        ctx.fillStyle = 'white';
+    }
+}
+
+function addInvincibilityLayer(duration) {
+    const endTime = Date.now() + duration;
+    player.activeInvincibilityTimers.push(endTime);
+    player.isInvincible = true;
+    clearExpiredInvincibility();
+}
+
+function clearExpiredInvincibility() {
+    const now = Date.now();
+    player.activeInvincibilityTimers = player.activeInvincibilityTimers.filter(endTime => endTime > now);
+    if (player.activeInvincibilityTimers.length === 0 && !player.isSuperComboActive) {
+        player.isInvincible = false;
+    }
 }
 
 
@@ -3835,6 +3927,7 @@ function cleanupRun({ preserveBossEntity = false } = {}) {
     player.bullets = [];
     clearEnemiesArray();
     clearPowerUpsArray();
+    clearChallengePowerUpsArray();
 
     particles.forEach(releaseParticle);
     particles.length = 0;
@@ -3891,6 +3984,9 @@ function resetGlobalStateForNewRun(mode) {
     if (canvasBackground) {
         canvasBackground.style.backgroundImage = `url('assets/images/container background${backgroundIndex}.png')`;
     }
+
+    clearChallengePowerUpsArray();
+    lastChallengePowerUpTime = 0;
 
     isGamePaused = false;
     setGameState(GAME_STATES.RUNNING);
@@ -3957,6 +4053,7 @@ function updatePlayerImage() {
 function toggleFighter() {
     if (hasGoldenFighter) {
         isUsingGoldenFighter = !isUsingGoldenFighter;
+        localStorage.setItem(GOLDEN_FIGHTER_SELECTION_KEY, isUsingGoldenFighter ? 'true' : 'false');
         updatePlayerImage();
         applyUpgrades(); // 重新应用所有属性
 
@@ -4113,6 +4210,11 @@ function clearEnemiesArray() {
 function clearPowerUpsArray() {
     for (const p of powerUps) releasePowerUpObj(p);
     powerUps.length = 0;
+}
+
+function clearChallengePowerUpsArray() {
+    for (const p of challengePowerUps) releasePowerUpObj(p);
+    challengePowerUps.length = 0;
 }
 
 // Boss模式启动函数
