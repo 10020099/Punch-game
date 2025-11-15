@@ -1,0 +1,45 @@
+# Cloudflare Pages 自定义响应头配置
+# 用于优化游戏性能和安全性
+
+/*
+  # 缓存控制
+  Cache-Control: public, max-age=3600, must-revalidate
+  
+  # 安全头
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  
+  # 性能优化
+  Accept-Ranges: bytes
+
+# 静态资源长期缓存
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML 文件短期缓存
+/*.html
+  Cache-Control: public, max-age=3600, must-revalidate
+
+# JavaScript 和 CSS 中期缓存
+/*.js
+  Cache-Control: public, max-age=86400, must-revalidate
+  Content-Type: application/javascript; charset=utf-8
+
+/*.css
+  Cache-Control: public, max-age=86400, must-revalidate
+  Content-Type: text/css; charset=utf-8
+
+# 图片资源长期缓存
+/*.png
+  Cache-Control: public, max-age=31536000, immutable
+  Content-Type: image/png
+
+/*.jpg
+  Cache-Control: public, max-age=31536000, immutable
+  Content-Type: image/jpeg
+
+/*.webp
+  Cache-Control: public, max-age=31536000, immutable
+  Content-Type: image/webp

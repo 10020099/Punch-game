@@ -1,0 +1,913 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: url('assets/images/big background.png') no-repeat center center fixed;
+    font-family: 'Arial', sans-serif;
+    overflow: hidden;
+    position: relative;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+#game-container {
+    position: relative;
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.7), 0 0 50px rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+    border: 3px solid rgba(255, 215, 0, 0.5);
+    z-index: 1;
+    padding: 10px;
+    animation: containerGlow 3s ease infinite;
+}
+
+@keyframes containerGlow {
+    0% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.7), 0 0 50px rgba(255, 255, 255, 0.3); }
+    50% { box-shadow: 0 0 40px rgba(255, 215, 0, 0.9), 0 0 60px rgba(255, 255, 255, 0.5); }
+    100% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.7), 0 0 50px rgba(255, 255, 255, 0.3); }
+}
+
+#gameCanvas {
+    border: 5px solid rgba(255, 215, 0, 0.5);
+    border-radius: 15px;
+    background: transparent;
+    box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.3), 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+#canvas-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('assets/images/container background1.png') no-repeat center center;
+    background-size: cover;
+    z-index: -1;
+    transition: background-image 1s ease-in-out;
+    border-radius: 15px;
+    opacity: 0.6;
+}
+
+#score {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: #FFD700;
+    font-size: 32px;
+    font-weight: bold;
+    text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 215, 0, 0.8);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+    padding: 15px 25px;
+    border-radius: 15px;
+    border: 2px solid rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+    animation: scoreGlow 2s ease infinite;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* background-image: url('assets/images/gold_texture.jpg'); */ /* Removed due to missing file */
+    background-size: cover;
+    background-position: center;
+    color: #FFF;
+    text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.6);
+}
+
+@keyframes scoreGlow {
+    0% { text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 215, 0, 0.8); }
+    50% { text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.9), 0 0 30px rgba(255, 215, 0, 0.6); }
+    100% { text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 215, 0, 0.8); }
+}
+
+/* 添加游戏标题 */
+#game-title {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: #FFFFFF;
+    font-size: 36px;
+    font-weight: bold;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 255, 255, 0.5);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+    padding: 10px 20px;
+    border-radius: 15px;
+    border: 2px solid rgba(255, 215, 0, 0.3);
+    animation: titlePulse 3s ease infinite;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* background-image: url('assets/images/metal_texture.jpg'); */ /* Removed due to missing file */
+    background-size: cover;
+    background-position: center;
+    color: #FFD700;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 215, 0, 0.5);
+}
+
+@keyframes titlePulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* 添加背景遮罩以增强对比度 */
+body::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 0;
+}
+
+/* 添加游戏控制说明 */
+#game-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 255, 255, 0.5);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.3));
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    z-index: 2;
+    display: none; /* 初始隐藏，游戏开始后显示 */
+}
+
+#game-controls p {
+    margin: 5px 0;
+}
+
+/* 添加游戏状态显示 */
+#game-status {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    color: #FFD700;
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 215, 0, 0.5);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.3));
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 215, 0, 0.3);
+    z-index: 2;
+    display: none; /* 初始隐藏，游戏结束后显示 */
+}
+
+/* 添加游戏开始按钮 */
+#start-button {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 30px;
+    font-weight: bold;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 255, 255, 0.5);
+    background: linear-gradient(145deg, #FF4500, #FF6347);
+    padding: 20px 40px;
+    border-radius: 15px;
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    z-index: 3;
+    animation: startButtonPulse 2s ease infinite;
+    display: none; /* 初始隐藏，游戏加载完成后显示 */
+}
+
+@keyframes startButtonPulse {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.1); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* 添加游戏结束提示框 */
+#game-over {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFD700;
+    font-size: 40px;
+    font-weight: bold;
+    text-shadow: 4px 4px 10px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 215, 0, 0.8);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.5));
+    padding: 30px 60px;
+    border-radius: 20px;
+    border: 3px solid rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.7);
+    z-index: 3;
+    display: none; /* 初始隐藏，游戏结束后显示 */
+    animation: gameOverAppear 1s ease;
+    text-align: center;
+}
+
+@keyframes gameOverAppear {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+#game-over p {
+    margin: 10px 0;
+    font-size: 24px;
+}
+
+#challenge-result-detail,
+#challenge-win-count {
+    font-size: 24px;
+    margin: 10px 0;
+}
+
+#restart-button,
+#return-to-menu-button,
+#open-upgrade-panel-button-gameover {
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: bold;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 255, 255, 0.5);
+    background: linear-gradient(145deg, #FF4500, #FF6347);
+    padding: 10px 30px;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    margin-top: 20px;
+    margin-left: auto;
+    margin-right: auto;
+    display: block;
+    animation: restartButtonPulse 2s ease infinite;
+}
+
+#game-over button + button {
+    margin-top: 12px;
+}
+
+@keyframes restartButtonPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* --- 强化面板样式 --- */
+#upgrade-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px; /* 或者使用百分比，例如 70vw */
+    max-height: 80vh;
+    overflow-y: auto;
+    background-color: rgba(30, 30, 50, 0.95); /* 深蓝紫色背景 */
+    color: #FFF;
+    border: 3px solid rgba(255, 215, 0, 0.7); /* 金色边框 */
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+    z-index: 100; /* 确保在最上层 */
+    font-family: 'Arial', sans-serif;
+    /* 🚀 增强动画效果 */
+    animation: slideInFromTop 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+}
+
+#upgrade-panel h2 {
+    text-align: center;
+    color: #FFD700; /* 金色标题 */
+    margin-top: 0;
+    margin-bottom: 20px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+}
+
+#upgrade-panel h3 {
+    color: #ADD8E6; /* 淡蓝色副标题 */
+    border-bottom: 1px solid rgba(255, 215, 0, 0.5);
+    padding-bottom: 5px;
+    margin-top: 25px;
+    margin-bottom: 15px;
+}
+
+#upgrade-panel p#currency-display { /* 给显示总积分的p一个特定id，方便样式 */
+    text-align: center;
+    font-size: 1.2em;
+    margin-bottom: 20px;
+    color: #FFD700;
+}
+
+#upgrade-panel .upgrade-category {
+    margin-bottom: 20px;
+}
+
+#upgrade-panel .upgrade-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 5px;
+    margin-bottom: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#upgrade-panel .upgrade-item span {
+    margin: 0 5px;
+}
+
+#upgrade-panel .item-name {
+    flex-basis: 30%; /* 调整名称宽度占比 */
+    font-weight: bold;
+}
+#upgrade-panel .item-level {
+    flex-basis: 15%;
+    text-align: center;
+}
+#upgrade-panel .item-effect {
+    flex-basis: 25%;
+    font-size: 0.9em;
+    color: #ccc;
+}
+#upgrade-panel .item-cost {
+    flex-basis: 15%;
+    text-align: right;
+    color: #FFD700;
+}
+
+
+#upgrade-panel button {
+    background: linear-gradient(145deg, #FF8C00, #FFD700); /* 橙色到金色渐变 */
+    color: #000; /* 黑色文字 */
+    border: 2px solid #FFF;
+    padding: 8px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(255,255,255,0.3);
+    transition: background 0.3s ease, transform 0.1s ease;
+}
+
+#upgrade-panel button:hover {
+    background: linear-gradient(145deg, #FFA500, #FFFF00); /* 悬停时更亮 */
+    transform: scale(1.05);
+}
+
+#upgrade-panel button:disabled {
+    background: #555;
+    color: #888;
+    cursor: not-allowed;
+    border-color: #777;
+}
+
+
+#upgrade-panel #close-upgrade-panel-button {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    padding: 5px 10px;
+    background: linear-gradient(145deg, #8B0000, #FF4500); /* 红色系关闭按钮 */
+    color: white;
+}
+#upgrade-panel #close-upgrade-panel-button:hover {
+    background: linear-gradient(145deg, #A52A2A, #FF6347);
+}
+
+/* 确保强化面板内的文本可选择，如果需要 */
+#upgrade-panel {
+    user-select: text;
+}
+
+/* 黄金飞机相关样式 */
+#golden-fighter-container {
+    margin-bottom: 20px;
+}
+
+#golden-fighter-container .upgrade-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+    border: 2px solid rgba(255, 215, 0, 0.7);
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+    margin-bottom: 10px;
+    transition: all 0.3s ease;
+}
+
+#golden-fighter-container .upgrade-item:hover {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.7);
+    transform: translateY(-2px);
+}
+
+#golden-fighter-container img {
+    margin-right: 15px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+}
+
+#golden-fighter-container .item-name {
+    color: gold;
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(255, 215, 0, 0.7);
+    display: block;
+    margin-bottom: 5px;
+}
+
+#golden-fighter-container .item-effect {
+    color: #FFFFFF;
+    font-size: 14px;
+    margin: 5px 0;
+}
+
+#golden-fighter-status {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+#golden-fighter-status button {
+    background: linear-gradient(145deg, #FFD700, #FFA500);
+    color: #000;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    margin-top: 5px;
+}
+
+#golden-fighter-status button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+}
+
+#golden-fighter-status button:disabled {
+    background: linear-gradient(145deg, #555, #333);
+    color: #888;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.using-golden-fighter {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: linear-gradient(145deg, rgba(255, 215, 0, 0.8), rgba(255, 165, 0, 0.8));
+    color: #000;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+    z-index: 10;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+    animation: pulseGolden 2s infinite;
+}
+
+@keyframes pulseGolden {
+    0% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.7); }
+    50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.9); }
+    100% { box-shadow: 0 0 10px rgba(255, 215, 0, 0.7); }
+}
+
+/* --- 作弊面板样式 --- */
+#cheat-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 20px;
+    background: rgba(30, 30, 50, 0.95);
+    color: #fff;
+    border: 3px solid rgba(255, 215, 0, 0.7);
+    border-radius: 15px;
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+    z-index: 110;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#cheat-panel button {
+    background: linear-gradient(145deg, #FF8C00, #FFD700);
+    color: #000;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s ease;
+}
+
+#cheat-panel button:hover {
+    background: linear-gradient(145deg, #FFA500, #FFFF00);
+}
+
+/* Boss关挑战按钮 */
+#boss-start-button {
+    position: absolute;
+    top: calc(50% + 100px); /* 位于开始按钮正下方约100px */
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 26px;
+    font-weight: bold;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(173, 216, 230, 0.8);
+    background: linear-gradient(145deg, #1E90FF, #00BFFF); /* 蓝色系渐变与普通开始按钮区分 */
+    padding: 18px 38px;
+    border-radius: 15px;
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    z-index: 3;
+    animation: bossButtonPulse 2s ease infinite;
+    display: none; /* 初始隐藏，JS 控制显示 */
+}
+
+#challenge-start-button {
+    position: absolute;
+    top: calc(50% + 180px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 24px;
+    font-weight: bold;
+    text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8), 0 0 15px rgba(147, 112, 219, 0.8);
+    background: linear-gradient(145deg, #7B68EE, #6A5ACD);
+    padding: 16px 34px;
+    border-radius: 15px;
+    border: 3px solid rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    z-index: 3;
+    animation: bossButtonPulse 2.2s ease infinite;
+    display: none;
+}
+
+#challenge-rules {
+    position: absolute;
+    top: calc(50% + 240px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #FFFFFF;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
+    background: rgba(45, 45, 70, 0.85);
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 2px solid rgba(147, 112, 219, 0.8);
+    z-index: 3;
+    display: none;
+}
+
+#challenge-win-display {
+    position: absolute;
+    top: 90px;
+    left: 20px;
+    color: #FFD700;
+    font-size: 20px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    background: linear-gradient(145deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+    padding: 8px 16px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.4);
+    display: none;
+}
+
+@keyframes bossButtonPulse {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.08); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ============================================================================
+   UI 视觉反馈增强样式 - 从 ui-enhancements.css 合并
+   主要改进：按钮动画、渐变效果、响应式交互
+   ============================================================================ */
+
+/* 🎨 按钮悬停动画增强 */
+button {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent
+    );
+    transition: left 0.5s;
+}
+
+button:hover::before {
+    left: 100%;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+button:active {
+    transform: translateY(0px);
+    transition: transform 0.1s;
+}
+
+/* 🚀 升级面板增强动画 - 与原有样式合并 */
+
+@keyframes slideInFromTop {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -60%);
+    }
+    100% {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* 🎯 升级项目悬停效果增强 */
+.upgrade-item {
+    transition: all 0.3s ease;
+}
+
+.upgrade-item:hover {
+    background-color: rgba(255, 215, 0, 0.1);
+    border-color: rgba(255, 215, 0, 0.3);
+    transform: translateX(5px);
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
+}
+
+.upgrade-item:hover .item-name {
+    color: #FFD700;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+}
+
+/* ✨ 进度条动画效果 */
+.progress-bar {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FF6B35, #F7931E);
+    border-radius: 10px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.4) 50%,
+        transparent 100%
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* 🎪 成功/错误提示动画 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 25px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    z-index: 1000;
+    animation: slideInRight 0.5s ease, fadeOut 0.5s ease 2.5s forwards;
+}
+
+.notification.success {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+}
+
+.notification.error {
+    background: linear-gradient(135deg, #f44336, #da190b);
+    box-shadow: 0 4px 15px rgba(244, 67, 54, 0.3);
+}
+
+.notification.info {
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    box-shadow: 0 4px 15px rgba(33, 150, 243, 0.3);
+}
+
+@keyframes slideInRight {
+    0% {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes fadeOut {
+    0% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+/* 🌟 分数增长动画增强 */
+#score.score-increase {
+    animation: scoreGrowth 0.6s ease;
+}
+
+@keyframes scoreGrowth {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.15);
+        text-shadow: 
+            3px 3px 6px rgba(0, 0, 0, 0.8), 
+            0 0 25px rgba(255, 215, 0, 1),
+            0 0 35px rgba(255, 255, 255, 0.8);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* ⚡ 护盾条脉冲效果 */
+.shield-bar {
+    position: relative;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.shield-bar.low-shield {
+    animation: shieldPulse 1s infinite;
+}
+
+@keyframes shieldPulse {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(0, 191, 255, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(0, 191, 255, 0.8);
+    }
+}
+
+/* 🔥 Boss血条危险状态 */
+.boss-health.critical {
+    animation: criticalPulse 0.8s infinite;
+}
+
+@keyframes criticalPulse {
+    0%, 100% {
+        border-color: #ff3333;
+        box-shadow: 0 0 8px rgba(255, 51, 51, 0.4);
+    }
+    50% {
+        border-color: #ff6666;
+        box-shadow: 0 0 20px rgba(255, 51, 51, 0.8);
+    }
+}
+
+/* 🎨 道具发光效果 */
+.power-up {
+    animation: powerUpGlow 2s infinite ease-in-out;
+}
+
+@keyframes powerUpGlow {
+    0%, 100% {
+        filter: drop-shadow(0 0 5px currentColor);
+    }
+    50% {
+        filter: drop-shadow(0 0 15px currentColor);
+    }
+}
+
+/* 💫 暴击文字效果 */
+.critical-text {
+    animation: criticalBounce 0.8s ease;
+    color: #ff4444;
+    font-weight: bold;
+}
+
+@keyframes criticalBounce {
+    0% {
+        transform: scale(0.5) rotate(-5deg);
+        opacity: 0;
+    }
+    30% {
+        transform: scale(1.3) rotate(5deg);
+        opacity: 1;
+    }
+    60% {
+        transform: scale(0.9) rotate(-2deg);
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+}
+
+/* 🌈 彩虹文字效果（用于特殊奖励）*/
+.rainbow-text {
+    background: linear-gradient(
+        45deg,
+        #ff0000, #ff8000, #ffff00, #80ff00,
+        #00ff00, #00ff80, #00ffff, #0080ff,
+        #0000ff, #8000ff, #ff00ff, #ff0080
+    );
+    background-size: 400% 400%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: rainbowShift 3s ease infinite;
+}
+
+@keyframes rainbowShift {
+    0%, 100% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+/* 📱 响应式调整 */
+@media (max-width: 768px) {
+    #upgrade-panel {
+        width: 90vw;
+        max-height: 70vh;
+    }
+    
+    button {
+        padding: 12px 20px;
+        font-size: 16px;
+    }
+    
+    .upgrade-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .upgrade-item span {
+        margin: 2px 0;
+    }
+}
+
+/* 🎪 加载动画 */
+.loading-spinner {
+    border: 3px solid rgba(255, 215, 0, 0.3);
+    border-top: 3px solid #FFD700;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    margin-left: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
